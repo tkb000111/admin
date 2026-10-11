@@ -19,6 +19,7 @@ const os = require('node:os')
 const path = require('node:path')
 const fs = require('node:fs')
 const { pathToFileURL } = require('node:url')
+const { MysqlManager } = require('./mysql-manager.cjs')
 
 const here = __dirname
 const PROJECT = path.resolve(here, '..')
@@ -28,6 +29,8 @@ const OUTER_PORT = Number(process.env.OUTER_PORT || 18080)
 const INNER_PORT = Number(process.env.INNER_PORT || 18081)
 
 let javaProc = null
+let mysqlMgr = null
+let redisProc = null
 let gatewayServer = null
 let tray = null
 let win = null
@@ -129,7 +132,37 @@ app.whenReady().then(async () => {
     if (!fs.existsSync(JAR)) throw new Error(`找不到后端 jar：${JAR}`)
     if (!fs.existsSync(DIST)) throw new Error(`找不到前端产物：${DIST}`)
 
-    await ensureContainers()
+    // 数据库：优先用打进包里的 MySQL（客户机器没有 Docker）
+    // 开发态若没放内置 MySQL，则回退到本机容器
+    const mysqlBase = PACKAGED ? path.join(RES, 'mysql') : path.join(here, 'mysql')
+    const sqlDir = PACKAGED ? path.join(RES, 'sql') : path.join(PROJECT, 'scaffold-system', 'sql')
+    let dbReady = false
+    if (MysqlManager.available(mysqlBase)) {
+      // 注意：这里必须用英文路径。实测数据目录或 socket 路径含中文时
+      // mysqld 起不来（端口不监听、socket 连不上），后端随即 500。
+      const support = path.join(os.homedir(), 'Library/Application Support/CoolAdmin')
+      mysqlMgr = new MysqlManager({
+        baseDir: mysqlBase,
+        dataDir: path.join(support, 'mysql-data'),
+        socketDir: path.join(support, 'tmp'),
+        port: 3308,
+        sqlDir,
+      })
+      dbReady = await mysqlMgr.start()
+      if (dbReady) await mysqlMgr.ensureSchema('scaffold_system')
+      else log('⚠ 内置 MySQL 启动失败，回退到本机容器')
+    }
+    if (!dbReady) await ensureContainers()
+
+    // 缓存：优先用打进包里的 Redis；端口已占用（如开发态的容器）就直接用现成的
+    const redisBin = PACKAGED ? path.join(RES, 'redis', 'redis-server') : path.join(here, 'redis', 'redis-server')
+    if (fs.existsSync(redisBin) && !(await portBusy(6379))) {
+      // --save '' 关掉落盘：这里只放登录令牌，不需要持久化
+      redisProc = spawn(redisBin, ['--port', '6379', '--save', '', '--appendonly', 'no'], { stdio: 'ignore' })
+      log('内置缓存已启动（6379）')
+    } else {
+      log('使用已有的缓存服务（6379）')
+    }
 
     const javaBin = path.join(JAVA_HOME, 'bin', 'java')
     javaProc = spawn(javaBin, ['-jar', JAR, `--server.port=${innerPort}`], {
@@ -191,6 +224,8 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   log('正在停止服务…')
   try { gatewayServer && gatewayServer.close() } catch { /* ignore */ }
+  if (mysqlMgr) { try { mysqlMgr.stop() } catch { /* ignore */ } }
+  if (redisProc && !redisProc.killed) { try { redisProc.kill('SIGTERM') } catch { /* ignore */ } }
   if (javaProc && !javaProc.killed) {
     javaProc.kill('SIGTERM')
     setTimeout(() => { try { javaProc && !javaProc.killed && javaProc.kill('SIGKILL') } catch { /* ignore */ } }, 3000)

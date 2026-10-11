@@ -50,3 +50,7 @@ scaffold-vue/.tmp-*
 # 打包产物与运行时（用 electron/build-runtime.sh 重建）
 electron/runtime/
 electron/dist/
+
+# 内置数据库与缓存（体积大，用 electron/ 下的脚本或重新下载生成）
+electron/mysql/
+electron/redis/
