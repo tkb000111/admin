@@ -326,11 +326,12 @@
   .split-side { position: static; max-height: 280px; }
 }
 @media (max-width: 820px) {
-  .stage { padding: 0; }
+  /* 窄屏（平板竖屏 / 手机）：保留画框，只把边框和圆角收细 */
+  .stage { padding: 2px; }
   .app-frame {
-    height: 100dvh;
-    border: 0;
-    border-radius: 0;
+    height: calc(100dvh - 12px);
+    border-width: 6px;
+    border-radius: 24px;
     grid-template-columns: minmax(0, 1fr);
   }
   .rail {
