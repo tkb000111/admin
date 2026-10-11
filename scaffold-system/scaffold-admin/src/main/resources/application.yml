@@ -5,9 +5,9 @@ spring:
     active: dev
 
 server:
-  # 避开 8080（全世界开发者的默认端口，客户机器上极易冲突）。
-  # 实际端口仍可由启动脚本探测占用后覆盖：--server.port=xxxx
-  port: 18080
+  # 内部端口：后端不直接对外，由 gateway/server.mjs 统一代理出去。
+  # 选 18081 避开 8080 等高频冲突端口；可被启动脚本用 --server.port 覆盖。
+  port: 18081
 
 scaffold:
   api-prefix: /api

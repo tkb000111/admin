@@ -1,1 +1,0 @@
-import{d as a,b as t,c as s,s as o,aQ as c,l as n,p as i,t as l,q as r}from"./index-DhWGoILT.js";const m={class:"section-mark"},_=a({__name:"SectionLabel",props:{title:{},as:{}},setup(e){return(d,k)=>(t(),s("div",m,[e.title?(t(),o(c(e.as??"h2"),{key:0,class:"section-mark-title"},{default:n(()=>[i(l(e.title),1)]),_:1})):r("",!0)]))}});export{_};
