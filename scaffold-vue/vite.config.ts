@@ -12,8 +12,12 @@ export default defineConfig({
     },
   },
   server: {
+    // VITE_HOST=0.0.0.0 时允许局域网访问；默认仍只监听本机
+    host: process.env.VITE_HOST || 'localhost',
     port: 5173,
     open: true,
+    // VITE_ALLOWED_HOSTS=all 时放行任意域名（内网穿透用）；不设则保持 Vite 默认校验
+    allowedHosts: process.env.VITE_ALLOWED_HOSTS === 'all' ? true : undefined,
     proxy: {
       '/api': {
         target: apiProxyTarget,
