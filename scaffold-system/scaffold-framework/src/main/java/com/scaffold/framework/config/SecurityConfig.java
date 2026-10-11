@@ -41,7 +41,11 @@ public class SecurityConfig {
                         .requestMatchers("/api/health").permitAll()
                         .requestMatchers("/api/auth/captcha").permitAll()
                         .requestMatchers("/api/auth/login").permitAll()
-                        .anyRequest().authenticated()
+                        // 单端口部署：只有接口需要认证。
+                        // 页面与静态资源放行，是否跳转登录由前端路由守卫判断；
+                        // 数据本身仍受 /api/** 保护，未登录看不到任何内容。
+                        .requestMatchers("/api/**").authenticated()
+                        .anyRequest().permitAll()
                 )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();

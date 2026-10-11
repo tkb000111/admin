@@ -5,7 +5,9 @@ spring:
     active: dev
 
 server:
-  port: 8080
+  # 避开 8080（全世界开发者的默认端口，客户机器上极易冲突）。
+  # 实际端口仍可由启动脚本探测占用后覆盖：--server.port=xxxx
+  port: 18080
 
 scaffold:
   api-prefix: /api

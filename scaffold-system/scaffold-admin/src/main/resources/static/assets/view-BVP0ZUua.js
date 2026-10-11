@@ -1,0 +1,1 @@
+import{w as r,r as d}from"./index-DhWGoILT.js";function n(s,i,l,a){const c=`scaffold.view.${s}`;let t=i;try{const e=localStorage.getItem(c);e&&l.includes(e)?t=e:a&&window.matchMedia("(max-width: 820px)").matches&&(t=a)}catch{}const o=d(t);return r(()=>o.value,e=>{try{localStorage.setItem(c,e)}catch{}}),o}export{n as u};
