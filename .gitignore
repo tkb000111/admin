@@ -46,3 +46,7 @@ scaffold-vue/.tmp-*
 # 前端品牌配置与业务类型是必要源码，覆盖本机可能存在的 data/ 全局忽略。
 !/scaffold-vue/src/data/
 !/scaffold-vue/src/data/**
+
+# 打包产物与运行时（用 electron/build-runtime.sh 重建）
+electron/runtime/
+electron/dist/

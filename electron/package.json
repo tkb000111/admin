@@ -2,13 +2,63 @@
   "name": "cool-admin-desktop",
   "version": "0.1.0",
   "description": "酷炫后台管理 — 桌面版",
-  "main": "main.mjs",
-  "type": "module",
+  "main": "main.cjs",
   "private": true,
   "scripts": {
     "start": "electron .",
-    "pack": "electron-builder --dir",
-    "dist": "electron-builder"
+    "dist": "electron-builder --mac --x64"
+  },
+  "build": {
+    "appId": "com.tkb.admin",
+    "productName": "酷炫后台管理",
+    "asar": false,
+    "files": [
+      "main.cjs",
+      "package.json"
+    ],
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "category": "public.app-category.business"
+    },
+    "extraResources": [
+      {
+        "from": "runtime",
+        "to": "runtime"
+      },
+      {
+        "from": "../gateway",
+        "to": "gateway"
+      },
+      {
+        "from": "../scaffold-vue/dist",
+        "to": "frontend"
+      },
+      {
+        "from": "../scaffold-system/scaffold-admin/target/scaffold-admin-0.1.0-SNAPSHOT.jar",
+        "to": "backend/app.jar"
+      }
+    ],
+    "dmg": {
+      "contents": [
+        {
+          "x": 130,
+          "y": 220
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
+    }
   },
   "devDependencies": {
     "electron": "^33.2.0",
