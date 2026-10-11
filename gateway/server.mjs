@@ -1,19 +1,12 @@
 /**
  * 对外统一入口（网关）
  *
- * 架构：内部双进程双端口，对外统一单端口。
+ *   外部用户 → 网关 :18080（页面 + /api 转发）
+ *                 └→ 后端 :18081（Java，只处理 /api）
  *
- *   外部用户  →  http://host:18080  ← 本网关（Node，无第三方依赖）
- *                    ├─ 静态页面  →  scaffold-vue/dist
- *                    └─ /api/*    →  代理到后端 127.0.0.1:18081（Java）
- *
- * 好处：
- *   1. 对外只有一个地址、一个端口，用户感知不到内部有两个服务
- *   2. 前后端保持分离：更新页面只需替换 dist，不必重启 Java 业务服务
- *   3. 静态资源与接口同源，不存在跨域
- *
- * 用法：
- *   PORT=18080 BACKEND_PORT=18081 DIST=路径 node gateway/server.mjs
+ * 两种用法：
+ *   1. 独立运行：PORT=18080 BACKEND_PORT=18081 node gateway/server.mjs
+ *   2. 被 Electron 主进程 import 后调用 startGateway()（此时不额外起进程）
  */
 
 import http from 'node:http'
@@ -23,10 +16,6 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
-
-const PORT = Number(process.env.GATEWAY_PORT || process.env.PORT || 18080)
-const BACKEND_PORT = Number(process.env.BACKEND_PORT || 18081)
-const DIST = path.resolve(process.env.DIST || path.join(here, '..', 'scaffold-vue', 'dist'))
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -46,57 +35,40 @@ const MIME = {
   '.map': 'application/json; charset=utf-8',
 }
 
-function log(...a) { console.log('[网关]', ...a) }
-
 /** 转发到后端 Java 服务 */
-function proxyToBackend(req, res) {
+function proxyToBackend(req, res, backendPort) {
   const headers = { ...req.headers }
-  delete headers['host'] // 交给 http.request 按目标重新设置
-
+  delete headers['host']
   const upstream = http.request(
-    { host: '127.0.0.1', port: BACKEND_PORT, path: req.url, method: req.method, headers },
-    (up) => {
-      res.writeHead(up.statusCode || 502, up.headers)
-      up.pipe(res)
-    }
+    { host: '127.0.0.1', port: backendPort, path: req.url, method: req.method, headers },
+    (up) => { res.writeHead(up.statusCode || 502, up.headers); up.pipe(res) }
   )
-
-  upstream.on('error', (err) => {
-    log('后端连接失败：', err.code || err.message)
-    if (!res.headersSent) {
-      res.writeHead(502, { 'content-type': 'application/json; charset=utf-8' })
-    }
+  upstream.on('error', () => {
+    if (!res.headersSent) res.writeHead(502, { 'content-type': 'application/json; charset=utf-8' })
     res.end(JSON.stringify({ code: 502, message: '后端服务未就绪，请稍候再试' }))
   })
-
   req.pipe(upstream)
 }
 
 /** 静态文件服务；找不到则回退 index.html（前端 history 路由） */
-async function serveStatic(req, res) {
+async function serveStatic(req, res, dist) {
   const urlPath = decodeURIComponent((req.url || '/').split('?')[0])
-  let file = path.join(DIST, urlPath)
+  let file = path.join(dist, urlPath)
 
-  // 防目录穿越
-  if (!file.startsWith(DIST)) {
-    res.writeHead(403); res.end('Forbidden'); return
-  }
+  if (!file.startsWith(dist)) { res.writeHead(403); res.end('Forbidden'); return }
 
   try {
     const st = await fsp.stat(file)
-    if (st.isDirectory()) file = path.join(DIST, 'index.html')
+    if (st.isDirectory()) file = path.join(dist, 'index.html')
   } catch {
-    // 文件不存在：带扩展名的按 404；否则回退到 index.html 交给前端路由
-    if (path.extname(urlPath)) {
-      res.writeHead(404); res.end('Not Found'); return
-    }
-    file = path.join(DIST, 'index.html')
+    if (path.extname(urlPath)) { res.writeHead(404); res.end('Not Found'); return }
+    file = path.join(dist, 'index.html')
   }
 
   try {
     const body = await fsp.readFile(file)
     const ext = path.extname(file).toLowerCase()
-    const isHashed = /\/assets\//.test(urlPath) // 构建产物带内容哈希，可长缓存
+    const isHashed = /\/assets\//.test(urlPath)
     res.writeHead(200, {
       'content-type': MIME[ext] || 'application/octet-stream',
       'cache-control': isHashed ? 'public, max-age=31536000, immutable' : 'no-cache',
@@ -107,18 +79,32 @@ async function serveStatic(req, res) {
   }
 }
 
-const server = http.createServer((req, res) => {
-  const url = req.url || '/'
-  if (url.startsWith('/api/') || url === '/api') {
-    proxyToBackend(req, res)
-  } else {
-    serveStatic(req, res).catch(() => { res.writeHead(500); res.end('Internal Error') })
-  }
-})
+/**
+ * 启动网关
+ * @returns {Promise<import('node:http').Server>}
+ */
+export function startGateway({ port = 18080, backendPort = 18081, dist } = {}) {
+  const DIST = dist || path.join(here, '..', 'scaffold-vue', 'dist')
+  const server = http.createServer((req, res) => {
+    const url = req.url || '/'
+    if (url.startsWith('/api/') || url === '/api') proxyToBackend(req, res, backendPort)
+    else serveStatic(req, res, DIST).catch(() => { res.writeHead(500); res.end('Internal Error') })
+  })
+  return new Promise((resolve) => {
+    server.listen(port, '0.0.0.0', () => resolve(server))
+  })
+}
 
-server.listen(PORT, '0.0.0.0', () => {
-  log(`对外入口   http://localhost:${PORT}`)
-  log(`静态目录   ${DIST}`)
-  log(`后端转发   127.0.0.1:${BACKEND_PORT}`)
-  if (!fs.existsSync(DIST)) log(`⚠ 静态目录不存在，请先执行 npm run build`)
-})
+/* ── 独立运行模式 ───────────────────────────────────────── */
+const invokedDirectly = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+if (invokedDirectly) {
+  const port = Number(process.env.GATEWAY_PORT || process.env.PORT || 18080)
+  const backendPort = Number(process.env.BACKEND_PORT || 18081)
+  const dist = process.env.DIST || path.join(here, '..', 'scaffold-vue', 'dist')
+  startGateway({ port, backendPort, dist }).then(() => {
+    console.log(`[网关] 对外入口   http://localhost:${port}`)
+    console.log(`[网关] 静态目录   ${dist}`)
+    console.log(`[网关] 后端转发   127.0.0.1:${backendPort}`)
+    if (!fs.existsSync(dist)) console.log('[网关] ⚠ 静态目录不存在，请先执行 npm run build')
+  })
+}
