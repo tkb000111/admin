@@ -15,7 +15,10 @@
     "files": [
       "main.cjs",
       "mysql-manager.cjs",
-      "package.json"
+      "logger.cjs",
+      "preload-loading.cjs",
+      "package.json",
+      "assets/**"
     ],
     "mac": {
       "target": [

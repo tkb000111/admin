@@ -16,7 +16,8 @@ const path = require('node:path')
 const net = require('node:net')
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
-function log(...a) { console.log('[内置MySQL]', ...a) }
+const { createLogger } = require('./logger.cjs')
+const log = createLogger('mysql')
 
 class MysqlManager {
   /**
@@ -70,20 +71,20 @@ class MysqlManager {
   async initialize() {
     fs.mkdirSync(this.dataDir, { recursive: true })
     fs.mkdirSync(this.socketDir, { recursive: true })
-    log('首次运行，初始化数据目录…')
+    log.info('首次运行，初始化数据目录…')
     execFileSync(path.join(this.bin, 'mysqld'), [
       '--initialize-insecure',
       `--basedir=${this.baseDir}`,
       `--datadir=${this.dataDir}`,
     ], { env: this.env(), stdio: 'ignore' })
-    log('数据目录已初始化（root 无密码，仅本机可连）')
+    log.info('数据目录已初始化')
   }
 
   async start() {
     if (!this.initialized) await this.initialize()
 
     if (await this.portOpen(this.port)) {
-      log(`端口 ${this.port} 已在监听，跳过启动`)
+      log.info(`端口 ${this.port} 已在监听，跳过启动`)
       return true
     }
 
@@ -98,13 +99,13 @@ class MysqlManager {
       '--default-time-zone=+08:00',
     ], { env: this.env(), stdio: 'ignore' })
 
-    this.proc.on('error', (e) => log('mysqld 进程错误：', e.message))
+    this.proc.on('error', (e) => log.error('mysqld 进程错误', { message: e.message }))
 
     for (let i = 0; i < 60; i++) {
-      if (await this.portOpen(this.port)) { log(`已启动，端口 ${this.port}`); return true }
+      if (await this.portOpen(this.port)) { log.info(`已启动，端口 ${this.port}`); return true }
       await sleep(1000)
     }
-    log('启动超时')
+    log.warn('启动超时', { port: this.port })
     return false
   }
 
@@ -112,7 +113,7 @@ class MysqlManager {
   async ensureSchema(dbName = 'scaffold_system') {
     const marker = path.join(this.dataDir, '.scaffold-initialized')
     if (fs.existsSync(marker)) return true
-    if (!this.sqlDir) { log('未提供 SQL 目录，跳过导入'); return false }
+    if (!this.sqlDir) { log.info('未提供 SQL 目录，跳过导入'); return false }
 
     const mysql = path.join(this.bin, 'mysql')
     const run = (args) => execFileSync(mysql, args, { env: this.env(), stdio: 'ignore' })
@@ -123,14 +124,14 @@ class MysqlManager {
       const files = ['V1__init_schema.sql', 'V2__seed_data.sql']
       for (const f of files) {
         const p = path.join(this.sqlDir, f)
-        if (!fs.existsSync(p)) { log('缺少脚本：', f); continue }
+        if (!fs.existsSync(p)) { log.info('缺少脚本：', f); continue }
         const sql = fs.readFileSync(p, 'utf8')
         // 注意：stdio 不能用 'ignore'——那会把 stdin 一起忽略，SQL 压根喂不进去。
         // 必须给 stdin 留 pipe，否则导入静默失败（命令返回 0 但一行都没执行）。
         execFileSync(mysql, [...base, dbName], {
           env: this.env(), input: sql, stdio: ['pipe', 'ignore', 'pipe'], maxBuffer: 64 * 1024 * 1024,
         })
-      log('已导入', f)
+      log.info('已导入', f)
       }
       // 最后一步：initialize-insecure 建的 root 是空密码，但后端按 scaffold123 连
       // 后端走 TCP（127.0.0.1），所以 localhost 和 % 两种都要设
@@ -140,12 +141,12 @@ class MysqlManager {
         `GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' WITH GRANT OPTION;` +
         `FLUSH PRIVILEGES;`],
         { env: this.env(), stdio: ['pipe', 'ignore', 'pipe'] })
-      log('root 密码已设置')
+      log.info('root 密码已设置')
 
       fs.writeFileSync(marker, new Date().toISOString())
       return true
     } catch (e) {
-      log('导入失败：', e.message)
+      log.error('导入失败', { message: e.message })
       return false
     }
   }
@@ -156,7 +157,7 @@ class MysqlManager {
       execFileSync(path.join(this.bin, 'mysqladmin'),
         ['-u', 'root', `--password=${this.password}`, `--socket=${this.socket}`, 'shutdown'],
         { env: this.env(), stdio: 'ignore', timeout: 20000 })
-      log('已优雅停止')
+      log.info('已优雅停止')
       return
     } catch { /* 退回杀进程 */ }
     if (this.proc && !this.proc.killed) {
