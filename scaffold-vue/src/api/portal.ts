@@ -55,6 +55,8 @@ export function createPortalApi(client: HttpClient) {
         columns: (id: number) => client.get<Record<string, unknown>[]>(`/tool/generator/tables/${id}/columns`),
         preview: (id: number) => client.get<GeneratorPreview>(`/tool/generator/tables/${id}/preview`),
         update: (id: number, body: GeneratorTableUpdate) => client.put<void>(`/tool/generator/tables/${id}`, body),
+        remove: (id: number) => client.delete<void>(`/tool/generator/tables/${id}`),
+        resync: (id: number) => client.post<{ tableName: string; columns: number }>(`/tool/generator/tables/${id}/resync`),
         generate: (id: number) => client.post<Record<string, unknown>>(`/tool/generator/tables/${id}/generate`),
         download: (id: number) => client.download(`/tool/generator/tables/${id}/download`),
       },

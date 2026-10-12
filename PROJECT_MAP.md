@@ -112,6 +112,7 @@
 | 日志统计 / 泳道 | `GET /monitor/oper-logs/stats`、`GET /monitor/oper-logs/timeline`、`GET /monitor/login-logs/stats` | 同上 | 已确认 |
 | 生成器表与导入 | `GET /tool/generator/tables`、`GET /tool/generator/importable-tables`、`POST /tool/generator/import` | `GeneratorController` | 已确认 |
 | 生成器配置与输出 | `PUT /tool/generator/tables/{id}`；其后追加 `GET /columns`、`GET /preview`、`POST /generate`、`GET /download` | 同上 | 已确认 |
+| 生成器取消导入与重新同步 | `DELETE /tool/generator/tables/{id}`（删配置不动源表）、`POST /tool/generator/tables/{id}/resync`（按 information_schema 重建列配置，确认状态重置为待确认） | 同上 | 已确认（2026-10-12） |
 
 ## 六、改动影响链
 
@@ -166,6 +167,7 @@
 - 初始化 SQL 是新项目起点，不是旧库的自动升级迁移；`DbInit fix` 会删除整个目标库。
 - 日志表、关联表、生成字段表不强制使用全部四个业务审计字段；`sys_file` 为保留表，当前没有上传业务接口。
 - `composables/ask.ts` 是本地规则问答引擎：各模块注册 `intent{patterns, run}`，按 `hasPermission` 过滤不可用意图；命令面板输入 `?` 进入同一引擎。
+- 代码生成的配置是**一次性快照**：导入时把 `information_schema` 的表与列元数据复制进 `gen_table` / `gen_table_column`，之后生成读的是配置副本。源表结构变更后用「重新同步」（`POST /tool/generator/tables/{id}/resync`）重建列配置，确认状态重置为待确认；「取消导入」删配置不动源表；已导入的表再次导入仍直接复用旧配置（不刷新）；列表 `sourceExists=false` 表示源表已删除，此时同步返回 400。
 - 视口平移缩放集中在 `composables/viewport.ts`（`useViewportPan`）：组织画布与关系图共用；`firstTimeInSession` 控制工作台开场等“每会话一次”的编排。
 - 用户按岗位过滤走 `sys_user_post` 关联条件，分页、统计、导出一致生效并沿用 `@DataScope`。
 

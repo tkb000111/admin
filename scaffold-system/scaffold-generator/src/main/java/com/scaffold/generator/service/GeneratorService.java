@@ -31,7 +31,7 @@ public class GeneratorService {
 
     public PageResult<Map<String, Object>> tables(PageQuery query, String keyword) {
         Page page = pageOf(query);
-        return PageResult.of(booleanRows(mapper.selectTables(keyword, page.offset(), page.pageSize()), "synced"),
+        return PageResult.of(booleanRows(mapper.selectTables(keyword, page.offset(), page.pageSize()), "synced", "sourceExists"),
                 mapper.countTables(keyword), page.pageNum(), page.pageSize());
     }
 
@@ -104,6 +104,36 @@ public class GeneratorService {
         if (mapper.updateTable(id, tableComment, synced, currentUsername()) == 0) {
             throw new BusinessException("代码生成表不存在");
         }
+    }
+
+    /** 取消导入：删除生成配置（表配置 + 列配置），不动数据库里的表 */
+    @Transactional
+    public void deleteTable(Long tableId) {
+        ensureTable(tableId);
+        mapper.deleteColumnsByTableId(tableId);
+        mapper.deleteTable(tableId);
+    }
+
+    /**
+     * 重新同步：源表结构变更（加列、改类型、改注释）后，用 information_schema 的最新元数据
+     * 重建列配置。表说明同步刷新，确认状态重置为待确认（列已变，需重新确认）。
+     */
+    @Transactional
+    public Map<String, Object> resyncTable(Long tableId) {
+        Map<String, Object> table = ensureTable(tableId);
+        String tableName = String.valueOf(table.get("tableName"));
+        Map<String, Object> dbTable = mapper.selectDatabaseTable(tableName);
+        if (dbTable == null) {
+            throw new BusinessException("数据库表不存在：" + tableName + "，无法重新同步");
+        }
+        mapper.refreshTable(tableId, asString(dbTable.get("tableComment")), currentUsername());
+        mapper.deleteColumnsByTableId(tableId);
+        int columns = 0;
+        for (Map<String, Object> column : mapper.selectDatabaseColumns(tableName)) {
+            mapper.insertColumn(columnRow(tableId, column));
+            columns++;
+        }
+        return Map.of("tableName", tableName, "columns", columns);
     }
 
     public Map<String, Object> generate(Long tableId) {

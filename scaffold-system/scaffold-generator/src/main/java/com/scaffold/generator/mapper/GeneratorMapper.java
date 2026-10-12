@@ -1,6 +1,7 @@
 package com.scaffold.generator.mapper;
 
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Options;
 import org.apache.ibatis.annotations.Param;
@@ -24,20 +25,23 @@ public interface GeneratorMapper {
     long countTables(@Param("keyword") String keyword);
 
     @Select("""
-            SELECT id,
-                   table_name AS tableName,
-                   table_comment AS tableComment,
-                   class_name AS className,
-                   module_name AS module,
-                   business_name AS businessName,
-                   synced,
-                   DATE_FORMAT(create_time, '%Y-%m-%d %H:%i') AS createTime
-            FROM gen_table
+            SELECT g.id,
+                   g.table_name AS tableName,
+                   g.table_comment AS tableComment,
+                   g.class_name AS className,
+                   g.module_name AS module,
+                   g.business_name AS businessName,
+                   g.synced,
+                   CASE WHEN t.table_name IS NULL THEN 0 ELSE 1 END AS sourceExists,
+                   DATE_FORMAT(g.create_time, '%Y-%m-%d %H:%i') AS createTime
+            FROM gen_table g
+            LEFT JOIN information_schema.tables t
+                   ON t.table_schema = DATABASE() AND t.table_name = g.table_name AND t.table_type = 'BASE TABLE'
             WHERE #{keyword} IS NULL OR #{keyword} = ''
-               OR table_name LIKE CONCAT('%', #{keyword}, '%')
-               OR table_comment LIKE CONCAT('%', #{keyword}, '%')
-               OR class_name LIKE CONCAT('%', #{keyword}, '%')
-            ORDER BY update_time DESC, id DESC
+               OR g.table_name LIKE CONCAT('%', #{keyword}, '%')
+               OR g.table_comment LIKE CONCAT('%', #{keyword}, '%')
+               OR g.class_name LIKE CONCAT('%', #{keyword}, '%')
+            ORDER BY g.update_time DESC, g.id DESC
             LIMIT #{offset}, #{pageSize}
             """)
     List<Map<String, Object>> selectTables(@Param("keyword") String keyword, @Param("offset") int offset, @Param("pageSize") int pageSize);
@@ -140,4 +144,20 @@ public interface GeneratorMapper {
             """)
     int updateTable(@Param("id") Long id, @Param("tableComment") String tableComment,
                     @Param("synced") Integer synced, @Param("username") String username);
+
+    /** 重新同步：刷新表说明并把确认状态重置为待确认（列结构已变，需重新确认） */
+    @Update("""
+            UPDATE gen_table
+            SET table_comment = #{tableComment},
+                synced = 0,
+                update_by = #{username}
+            WHERE id = #{id}
+            """)
+    int refreshTable(@Param("id") Long id, @Param("tableComment") String tableComment, @Param("username") String username);
+
+    @Delete("DELETE FROM gen_table_column WHERE table_id = #{tableId}")
+    int deleteColumnsByTableId(@Param("tableId") Long tableId);
+
+    @Delete("DELETE FROM gen_table WHERE id = #{id}")
+    int deleteTable(@Param("id") Long id);
 }

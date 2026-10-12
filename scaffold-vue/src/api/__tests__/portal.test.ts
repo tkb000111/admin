@@ -28,6 +28,8 @@ test('portal api maps dashboard and generator endpoints', async () => {
   await api.generator.tables.columns(3)
   await api.generator.tables.preview(3)
   await api.generator.tables.update(3, { tableComment: '用户表', synced: false })
+  await api.generator.tables.resync(3)
+  await api.generator.tables.remove(3)
   await api.generator.tables.generate(3)
   const zip = await api.generator.tables.download(3)
 
@@ -40,6 +42,8 @@ test('portal api maps dashboard and generator endpoints', async () => {
     'GET /api/tool/generator/tables/3/columns',
     'GET /api/tool/generator/tables/3/preview',
     'PUT /api/tool/generator/tables/3',
+    'POST /api/tool/generator/tables/3/resync',
+    'DELETE /api/tool/generator/tables/3',
     'POST /api/tool/generator/tables/3/generate',
     'GET /api/tool/generator/tables/3/download',
   ])

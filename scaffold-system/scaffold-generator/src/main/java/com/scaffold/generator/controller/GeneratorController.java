@@ -9,6 +9,7 @@ import com.scaffold.generator.service.GeneratorService;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -76,6 +77,23 @@ public class GeneratorController {
     @OperLog(module = "代码生成", action = "生成代码")
     public R<Map<String, Object>> generate(@PathVariable Long id) {
         return R.success(service.generate(id));
+    }
+
+    /** 取消导入：删除该表的生成配置（含列配置），不触碰数据库源表 */
+    @DeleteMapping("/tables/{id}")
+    @RequiresPermission("tool:gen:list")
+    @OperLog(module = "代码生成", action = "取消导入")
+    public R<Void> delete(@PathVariable Long id) {
+        service.deleteTable(id);
+        return R.success(null);
+    }
+
+    /** 重新同步：源表结构变更后，用数据库最新元数据重建列配置，确认状态重置为待确认 */
+    @PostMapping("/tables/{id}/resync")
+    @RequiresPermission("tool:gen:list")
+    @OperLog(module = "代码生成", action = "重新同步")
+    public R<Map<String, Object>> resync(@PathVariable Long id) {
+        return R.success(service.resyncTable(id));
     }
 
     @GetMapping("/tables/{id}/download")

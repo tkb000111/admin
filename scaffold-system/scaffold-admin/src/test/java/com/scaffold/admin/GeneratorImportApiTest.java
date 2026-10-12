@@ -139,6 +139,108 @@ class GeneratorImportApiTest {
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM sys_menu", Long.class)).isEqualTo(menuCount);
     }
 
+    @Test
+    void generatorCanResyncChangedColumnsAndDeleteImport() {
+        HttpHeaders headers = bearerHeaders(login("admin", "admin123"));
+
+        restTemplate.exchange(
+                "/api/tool/generator/import",
+                HttpMethod.POST,
+                new HttpEntity<>(Map.of("tableNames", List.of("sys_file")), headers),
+                MAP_TYPE
+        );
+        Long tableId = jdbcTemplate.queryForObject("SELECT id FROM gen_table WHERE table_name = 'sys_file'", Long.class);
+        jdbcTemplate.update("UPDATE gen_table SET synced = 1 WHERE id = ?", tableId);
+
+        // 容忍上次异常退出残留的探针列
+        Long probeLeft = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'sys_file' AND column_name = 'resync_probe'",
+                Long.class
+        );
+        if (probeLeft > 0) {
+            jdbcTemplate.update("ALTER TABLE sys_file DROP COLUMN resync_probe");
+        }
+
+        // 源表加列 → 重新同步后新列进入配置
+        jdbcTemplate.update("ALTER TABLE sys_file ADD COLUMN resync_probe varchar(64) COMMENT '同步探针'");
+        ResponseEntity<Map<String, Object>> resynced = restTemplate.exchange(
+                "/api/tool/generator/tables/" + tableId + "/resync",
+                HttpMethod.POST,
+                new HttpEntity<>(null, headers),
+                MAP_TYPE
+        );
+        assertThat(resynced.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM gen_table_column WHERE table_id = ? AND column_name = 'resync_probe' AND java_field = 'resyncProbe'",
+                Long.class,
+                tableId
+        )).isEqualTo(1);
+        // 结构已变，确认状态重置为待确认
+        assertThat(jdbcTemplate.queryForObject("SELECT synced FROM gen_table WHERE id = ?", Integer.class, tableId)).isZero();
+
+        // 源表删列 → 重新同步后配置同步移除
+        jdbcTemplate.update("ALTER TABLE sys_file DROP COLUMN resync_probe");
+        restTemplate.exchange(
+                "/api/tool/generator/tables/" + tableId + "/resync",
+                HttpMethod.POST,
+                new HttpEntity<>(null, headers),
+                MAP_TYPE
+        );
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM gen_table_column WHERE table_id = ? AND column_name = 'resync_probe'",
+                Long.class,
+                tableId
+        )).isZero();
+
+        // 取消导入：配置删除，源表不受影响
+        Long fileRows = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM sys_file", Long.class);
+        restTemplate.exchange(
+                "/api/tool/generator/tables/" + tableId,
+                HttpMethod.DELETE,
+                new HttpEntity<>(null, headers),
+                MAP_TYPE
+        );
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM gen_table WHERE id = ?", Long.class, tableId)).isZero();
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM gen_table_column WHERE table_id = ?", Long.class, tableId)).isZero();
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM sys_file", Long.class)).isEqualTo(fileRows);
+    }
+
+    @Test
+    void generatorListMarksMissingSourceTable() {
+        HttpHeaders headers = bearerHeaders(login("admin", "admin123"));
+        Long ghostId = jdbcTemplate.queryForObject("SELECT COALESCE(MAX(id), 0) + 1 FROM gen_table", Long.class);
+        jdbcTemplate.update("""
+                INSERT INTO gen_table (id, table_name, table_comment, class_name, module_name, business_name, synced, create_by, update_by)
+                VALUES (?, 'gen_ghost_probe', '幽灵表探针', 'GenGhostProbe', 'gen', 'ghostProbe', 1, 'test', 'test')
+                """, ghostId);
+        try {
+            ResponseEntity<Map<String, Object>> listed = restTemplate.exchange(
+                    "/api/tool/generator/tables?keyword=gen_ghost_probe",
+                    HttpMethod.GET,
+                    new HttpEntity<>(null, headers),
+                    MAP_TYPE
+            );
+            Map<String, Object> page = dataOf(listed.getBody());
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> rows = (List<Map<String, Object>>) page.get("rows");
+            assertThat(rows).hasSize(1);
+            assertThat(rows.get(0)).containsEntry("sourceExists", false);
+
+            // 源表不存在时同步返回 400，配置保留不清除
+            ResponseEntity<Map<String, Object>> failed = restTemplate.exchange(
+                    "/api/tool/generator/tables/" + ghostId + "/resync",
+                    HttpMethod.POST,
+                    new HttpEntity<>(null, headers),
+                    MAP_TYPE
+            );
+            assertThat(failed.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+            assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM gen_table WHERE id = ?", Long.class, ghostId)).isEqualTo(1);
+        } finally {
+            jdbcTemplate.update("DELETE FROM gen_table_column WHERE table_id = ?", ghostId);
+            jdbcTemplate.update("DELETE FROM gen_table WHERE id = ?", ghostId);
+        }
+    }
+
     private String login(String username, String password) {
         return TestAuthClient.login(restTemplate, username, password);
     }

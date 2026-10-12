@@ -7,9 +7,10 @@ import GeneratorPipeline from '@/components/business/GeneratorPipeline.vue'
 import { portalApi } from '@/api'
 import { useListPage } from '@/composables/list'
 import { pushToast, toastError } from '@/composables/toast'
+import { confirm } from '@/composables/confirm'
 import { downloadBlob } from '@/utils/download'
 
-interface TableRow { id: number; tableName: string; tableComment: string; className: string; module: string; businessName: string; synced: boolean; createTime: string }
+interface TableRow { id: number; tableName: string; tableComment: string; className: string; module: string; businessName: string; synced: boolean; sourceExists: boolean; createTime: string }
 
 const list = useListPage<TableRow, { keyword: string }>({
   query: { keyword: '' },
@@ -22,7 +23,7 @@ const columns: Column[] = [
   { key: 'module', title: '模块', width: 100 },
   { key: 'synced', title: '状态', width: 100 },
   { key: 'createTime', title: '导入时间', width: 150 },
-  { key: 'actions', title: '操作', width: 210, className: 'col-actions' },
+  { key: 'actions', title: '操作', width: 290, className: 'col-actions' },
 ]
 
 /* ── 导入 ── */
@@ -97,6 +98,47 @@ async function generate(row: TableRow) {
   }
 }
 
+/* ── 取消导入 ── */
+const removing = ref<number | null>(null)
+async function removeImport(row: TableRow) {
+  const ok = await confirm({
+    title: '取消导入',
+    message: `确认取消导入「${row.tableName}」吗？仅删除生成配置（表与字段），不会删除数据库里的表。`,
+    confirmText: '取消导入',
+    danger: true,
+  })
+  if (!ok) return
+  removing.value = row.id
+  try {
+    await portalApi.generator.tables.remove(row.id)
+    pushToast(`已取消导入「${row.tableName}」`)
+    if (pipeTable.value?.id === row.id) pipeTable.value = null
+    await list.load()
+  } catch (error) {
+    toastError(error, '取消导入失败')
+  } finally {
+    removing.value = null
+  }
+}
+
+/* ── 重新同步 ── */
+const syncing = ref<number | null>(null)
+async function resync(row: TableRow) {
+  syncing.value = row.id
+  try {
+    const res = await portalApi.generator.tables.resync(row.id)
+    pushToast(`已重新同步「${row.tableName}」（${res.columns} 个字段，确认状态已重置为待确认）`)
+    await list.load()
+    if (pipeTable.value?.id === row.id) {
+      pipeTable.value = list.rows.value.find(r => r.id === row.id) ?? pipeTable.value
+    }
+  } catch (error) {
+    toastError(error, '重新同步失败')
+  } finally {
+    syncing.value = null
+  }
+}
+
 </script>
 
 <template>
@@ -122,7 +164,10 @@ async function generate(row: TableRow) {
       <div class="cell-main">
         <span class="row-ico m-groove"><Icon name="database" :size="16" /></span>
         <div style="min-width: 0">
-          <div class="cell-title mono" style="font-size: 12.5px">{{ row.tableName }}</div>
+          <div class="cell-title mono" style="font-size: 12.5px">
+            {{ row.tableName }}
+            <Tag v-if="row.sourceExists === false" tone="danger" dot>源表已删除</Tag>
+          </div>
           <div class="cell-sub ellipsis">{{ row.tableComment || '未填写表说明' }}</div>
         </div>
       </div>
@@ -136,6 +181,8 @@ async function generate(row: TableRow) {
         <Button variant="text" size="sm" icon="eye" @click="openPipeline(row, 3)">预览</Button>
         <Button variant="text" size="sm" icon="sliders" @click="openPipeline(row, 1)">配置</Button>
         <Button variant="text" size="sm" icon="download" :loading="generating === row.id" @click="generate(row)">生成</Button>
+        <Button variant="text" size="sm" icon="refresh" :loading="syncing === row.id" @click="resync(row)">同步</Button>
+        <Button variant="text" size="sm" icon="trash" danger :loading="removing === row.id" @click="removeImport(row)">取消导入</Button>
       </div>
     </template>
 
@@ -164,7 +211,7 @@ async function generate(row: TableRow) {
         <div v-if="!importLoading && !candidates.length" class="select-empty" style="padding: 28px">没有可导入的表</div>
       </div>
       <template #footer>
-        <span class="soft" style="margin-right: auto; font-size: 12px">已选 {{ picked.length }} 张</span>
+        <span class="soft" style="margin-right: auto; font-size: 12px">已选 {{ picked.length }} 张；已导入的表结构有变时，请在列表用「同步」刷新</span>
         <Button variant="ghost" @click="importOpen = false">取消</Button>
         <Button variant="primary" :disabled="!picked.length" :loading="importing" @click="doImport">导入</Button>
       </template>

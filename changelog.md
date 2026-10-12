@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-10-12（代码生成器：取消导入、重新同步与源表状态标记）
+
+- 取消导入：新增 `DELETE /api/tool/generator/tables/{id}`，删除生成配置（`gen_table` 及级联 `gen_table_column`），不触碰数据库源表；列表行操作新增「取消导入」按钮，删除前走全局确认框，权限沿用 `tool:gen:list`，动作进统一操作日志。
+- 重新同步：新增 `POST /api/tool/generator/tables/{id}/resync`，用 `information_schema` 最新元数据重建列配置——源表加列则进入配置、删列则移出配置、表说明同步刷新，确认状态重置为待确认（结构已变需重新确认）；源表已不存在时返回 400 并给出明确文案，不清除配置。
+- 源表状态标记：表列表改为 `LEFT JOIN information_schema.tables`，输出 `sourceExists`；源表已删除时行内显示「源表已删除」危险标记。导入抽屉底部补充重新同步入口提示。
+- 测试：`GeneratorImportApiTest` 新增 2 个集成测试（加列 / 删列同步循环与状态重置、幽灵表标记与同步报错）；独立校验库 `scaffold_check` 跑通 48 项后端测试、21 项前端单测与含类型检查的前端构建，现场库未受测试污染。
+- 背景：此前导入是一次性快照——改表后重新导入被静默跳过、删表后配置成幽灵记录，只能手工 SQL 清理配置表。
+
 ## 2026-10-11（MIT 开源发布）
 
 - 以当前代码建立独立的公开版本快照，采用 MIT License；第三方依赖保留各自许可，README 单独说明 GSAP 许可。
