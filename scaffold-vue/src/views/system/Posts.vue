@@ -2,7 +2,7 @@
 import { reactive, ref, watch } from 'vue'
 import { Field, Segmented, StatusTag, Switch, TextInput, type Column } from '@/components/ui'
 import { DictSelect, FormDialog, ListPage, PermissionButton } from '@/components/business'
-import PostLadder from '@/components/business/PostLadder.vue'
+import PostMatrix from '@/components/business/PostMatrix.vue'
 import { systemApi } from '@/api'
 import { useListPage } from '@/composables/list'
 import { useViewMode } from '@/composables/view'
@@ -16,23 +16,23 @@ const list = useListPage<PostRow, { keyword: string; status: string }>({
   query: { keyword: '', status: '' },
 })
 
-/* ── 阶梯视图：按 sort 排成上升台阶，点岗位看成员触须 ── */
-const view = useViewMode('posts', 'ladder', ['ladder', 'table'] as const, 'table')
-const VIEWS = [{ label: '阶梯', value: 'ladder' as const }, { label: '表格', value: 'table' as const }]
-const ladderRows = ref<PostRow[]>([])
-const ladderLoading = ref(false)
-async function loadLadder() {
-  ladderLoading.value = true
+/* ── 矩阵视图：横排岗位按钮 + 在岗人员网格，点哪个岗位就查哪个岗位 ── */
+const view = useViewMode('posts', 'matrix', ['matrix', 'table'] as const, 'table')
+const VIEWS = [{ label: '矩阵', value: 'matrix' as const }, { label: '表格', value: 'table' as const }]
+const matrixRows = ref<PostRow[]>([])
+const matrixLoading = ref(false)
+async function loadMatrix() {
+  matrixLoading.value = true
   try {
     const page = await systemApi.posts.list({ pageNum: 1, pageSize: 200 })
-    ladderRows.value = page.rows as unknown as PostRow[]
+    matrixRows.value = page.rows as unknown as PostRow[]
   } catch (error) {
-    toastError(error, '岗位阶梯加载失败')
+    toastError(error, '岗位矩阵加载失败')
   } finally {
-    ladderLoading.value = false
+    matrixLoading.value = false
   }
 }
-watch(view, (v) => { if (v === 'ladder') loadLadder() }, { immediate: true })
+watch(view, (v) => { if (v === 'matrix') loadMatrix() }, { immediate: true })
 
 const columns: Column[] = [
   { key: 'postName', title: '岗位名称', minWidth: 160 },
@@ -81,7 +81,7 @@ async function submit() {
     }
     dialog.value = false
     await list.load()
-    if (view.value === 'ladder') loadLadder()
+    if (view.value === 'matrix') loadMatrix()
   } catch (error) {
     toastError(error, '岗位保存失败')
   } finally {
@@ -96,7 +96,7 @@ async function remove(row: PostRow) {
     await systemApi.posts.remove(row.id)
     pushToast('岗位已删除')
     await list.load()
-    if (view.value === 'ladder') loadLadder()
+    if (view.value === 'matrix') loadMatrix()
   } catch (error) {
     toastError(error, '岗位删除失败')
   }
@@ -116,14 +116,14 @@ async function batchRemove(ids: (string | number)[]) {
 </script>
 
 <template>
-  <ListPage title="岗位管理" desc="岗位描述员工在组织中的职务，可在用户管理中为用户指定岗位。" table-title="岗位列表" :list="list" :columns="columns" selectable :alt-view="view === 'ladder'">
+  <ListPage title="岗位管理" desc="岗位描述员工在组织中的职务，可在用户管理中为用户指定岗位。" table-title="岗位列表" :list="list" :columns="columns" selectable :alt-view="view === 'matrix'">
     <template #actions>
       <Segmented v-model="view" label="视图" :options="VIEWS" />
       <PermissionButton perm="system:post:add" variant="primary" icon="plus" @click="openCreate">新增岗位</PermissionButton>
     </template>
 
     <template #alt>
-      <PostLadder :posts="ladderRows" :loading="ladderLoading" @edit="openEdit(ladderRows.find(r => r.id === $event.id)!)" />
+      <PostMatrix :posts="matrixRows" :loading="matrixLoading" @edit="openEdit(matrixRows.find(r => r.id === $event.id)!)" />
     </template>
 
     <template #search>

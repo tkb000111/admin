@@ -3,7 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch 
 import Icon from '@/components/Icon.vue'
 import { bezierAt, createFrameLoop, motionSkipped, spring, springOf, type SpringState } from '@/composables/motion'
 import { useViewportPan } from '@/composables/viewport'
-import { archFlowSpots, archSpinePath, paintArchNeurons, paintArchPlate, paintArchSpine, paintArchWeb, paintDial, paintDot, paintHorizon, paintNetwork, paintOrb, paintOrbit, paintPillar, paintPulse, paintRipple, paintThread, readStagePalette, type ArchEdge, type ArchLayer, type ArchSpine, type NetworkData, type StagePalette } from '@/composables/neural'
+import { paintDial, paintDot, paintHorizon, paintNetwork, paintOrb, paintOrbit, paintPillar, paintPulse, paintRipple, paintThread, readStagePalette, type NetworkData, type StagePalette } from '@/composables/neural'
 
 /* ============================================================
    关系图：节点与连线由页面按当前层级算好目标坐标，本组件负责「活起来」——
@@ -22,8 +22,8 @@ export interface GraphNode {
   y: number
   label: string
   sub?: string
-  /** core 中心盘 / hub 能力岛卡 / item 胶囊 / dot 圆点（标签悬停显示）/ slab 台阶（舞台下带光柱）/ arch 层标签（架构图） */
-  kind?: 'core' | 'hub' | 'item' | 'dot' | 'slab' | 'arch'
+  /** core 中心盘 / hub 能力岛卡 / item 胶囊 / dot 圆点（标签悬停显示）/ slab 台阶（舞台下带光柱） */
+  kind?: 'core' | 'hub' | 'item' | 'dot' | 'slab'
   cat?: number
   tone?: 'danger' | 'off' | 'accent' | 'lime'
   icon?: string
@@ -53,28 +53,13 @@ export interface GraphLink {
   dashed?: boolean
 }
 
-/** 架构图：静态布局，层柱 / 连线 / 主干整体预渲染，每帧只画脉冲 */
-export interface ArchData {
-  layers: ArchLayer[]
-  edges: ArchEdge[]
-  /** 脉冲主干折线 */
-  spine: ArchSpine
-  /** 层柱宽度 */
-  plate: number
-  /** 主干与光晕取色的分类下标 */
-  cat: number
-}
-
 const props = withDefaults(defineProps<{
   nodes: GraphNode[]
-  /** 架构图模式下不需要连线 */
-  links?: GraphLink[]
+  links: GraphLink[]
   activeId?: string | null
   /** 额外高亮的节点（如溯源链路），为空时只按悬停高亮 */
   highlight?: string[] | null
   variant?: 'light' | 'stage'
-  /** 架构图模式：给到即接管渲染，节点位置由外部静态给定 */
-  arch?: ArchData | null
   /** 舞台背景网络：真实数据点位与关系 */
   network?: NetworkData | null
   /** 背景网络只高亮该分类 */
@@ -89,10 +74,8 @@ const props = withDefaults(defineProps<{
   pannable?: boolean
 }>(), {
   activeId: null,
-  links: () => [],
   highlight: null,
   variant: 'light',
-  arch: null,
   network: null,
   networkFocus: null,
   networkAlpha: 1,
@@ -113,8 +96,6 @@ const layer = ref<HTMLElement | null>(null)
 const stageCanvas = ref<HTMLCanvasElement | null>(null)
 const hoverId = ref<string | null>(null)
 const isStage = computed(() => props.variant === 'stage')
-/** 架构图模式：静态布局，不跑弹簧、不做每帧 DOM 写入 */
-const isArch = computed(() => Boolean(props.arch))
 watch(hoverId, id => emit('hover', id))
 const paused = ref(false)
 
@@ -210,8 +191,6 @@ const loop = createFrameLoop((dt, t) => {
   const now = performance.now()
   const snap = motionSkipped()
   const live = !snap && !paused.value
-  // 架构图：整幅静态，画布只在签名变化时补画一次；每帧只挪动三枚脉冲
-  if (isArch.value) { drawArch(); moveArchPulses(t, live); return }
   // 节点
   allNodes.value.forEach((node, i) => {
     const st = states.get(node.id)
@@ -267,81 +246,6 @@ const loop = createFrameLoop((dt, t) => {
     })
   })
 })
-
-/* ── 架构图：整个场景是静态的，所以画布只在数据 / 尺寸 / 主题变化时画一次，
-      之后每帧不做任何画布操作——脉冲与选中层光晕交给 CSS 合成层。
-      （曾经每帧 clearRect + 全画布 drawImage，单这一项就吃掉 3/4 的帧时间。） ── */
-let archSig = ''
-
-/** 签名做成 computed：只在 arch / 尺寸真的变了才重算，避免每帧拼字符串 */
-const archSignature = computed(() => {
-  const data = props.arch
-  const { w, h } = size.value
-  if (!data || !w || !h) return ''
-  const dpr = Math.min(window.devicePixelRatio || 1, 2)
-  return `${w}x${h}@${dpr}|${data.cat}|${data.layers
-    .map(l => `${l.cat}.${l.intensity.toFixed(2)}.${l.dim.toFixed(2)}.${l.active ? 1 : 0}.${l.x.toFixed(0)}.${l.y.toFixed(0)}.${l.h.toFixed(0)}`)
-    .join(',')}|${archSpinePath(data.spine)}`
-})
-
-function drawArch() {
-  const canvas = stageCanvas.value
-  const data = props.arch
-  const { w, h } = size.value
-  if (!canvas || !data || !w || !h) return
-  const dpr = Math.min(window.devicePixelRatio || 1, 2)
-  const pw = Math.round(w * dpr)
-  const ph = Math.round(h * dpr)
-  if (!palette && root.value) palette = readStagePalette(root.value)
-  const p = palette!
-  const sig = archSignature.value
-  if (sig === archSig && canvas.width === pw && canvas.height === ph) return
-  archSig = sig
-  canvas.width = pw
-  canvas.height = ph
-  const ctx = canvas.getContext('2d')
-  if (!ctx) return
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-  ctx.clearRect(0, 0, w, h)
-  paintArchWeb(ctx, data.edges, p)
-  data.layers.forEach(l => paintArchPlate(ctx, l, p, data.plate))
-  data.layers.forEach(l => paintArchNeurons(ctx, l, p))
-  paintArchSpine(ctx, data.spine, p.ink, p)
-}
-
-/* 脉冲走 DOM：每帧只写 transform，交给合成器，不触发任何重绘 */
-const ARCH_PULSES = 3
-const archPulseEls = ref<Array<HTMLElement | null>>([])
-let archPulsePlaced = false
-function bindArchPulse(el: unknown, i: number) {
-  if (el instanceof HTMLElement) archPulseEls.value[i] = el
-  else archPulseEls.value[i] = null
-}
-const archHalo = computed(() => {
-  const a = props.arch?.layers.find(l => l.active)
-  return a ? { x: a.x, y: a.y, r: Math.round(a.h * 1.5), cat: a.cat } : null
-})
-const archHaloStyle = computed(() => {
-  const h = archHalo.value
-  return h ? { left: `${h.x}px`, top: `${h.y}px`, width: `${h.r * 2}px`, height: `${h.r * 2}px` } : {}
-})
-
-function moveArchPulses(t: number, live: boolean) {
-  const data = props.arch
-  const els = archPulseEls.value
-  if (!data || els.length < ARCH_PULSES) return
-  // 暂停时冻结在原处；减少动态效果时停在正中
-  if (!live && archPulsePlaced) return
-  if (live) archPulsePlaced = true
-  const spots = archFlowSpots(data.spine, live ? t : 0.5, ARCH_PULSES)
-  for (let i = 0; i < ARCH_PULSES; i += 1) {
-    const el = els[i]
-    const s = spots[i]
-    if (!el || !s) continue
-    el.style.transform = `translate3d(${s.x.toFixed(1)}px, ${s.y.toFixed(1)}px, 0)`
-    el.style.opacity = live ? s.fade.toFixed(2) : '1'
-  }
-}
 
 /* ── 图谱舞台：一张 Canvas 画背景网络、连线、脉冲、珍珠球与刻度表盘 ── */
 let palette: StagePalette | null = null
@@ -489,8 +393,8 @@ onMounted(() => {
   }
   loop.start(root.value)
   if (props.burstKey) burstAt = performance.now()
-  // 主题切换后重新取发光色，并让架构图离屏图失效
-  themeObserver = new MutationObserver(() => { palette = null; archSig = '' })
+  // 主题切换后重新取发光色
+  themeObserver = new MutationObserver(() => { palette = null })
   themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
 })
 let themeObserver: MutationObserver | null = null
@@ -520,11 +424,7 @@ const nodeClass = (n: GraphNode) => [
   n.tone ? `tone-${n.tone}` : '',
   { 'is-active': n.id === props.activeId, 'is-dim': isDim(n.id), 'is-static': n.interactive === false },
 ]
-/** 架构图模式下位置由布局静态给定，不再每帧写 transform */
-const nodeStyle = (n: GraphNode) => {
-  if (!isArch.value) return n.size ? { '--size': `${n.size}px` } : undefined
-  return { '--size': `${n.size ?? 46}px`, transform: `translate3d(${n.x}px, ${n.y}px, 0)`, opacity: '1' }
-}
+const nodeStyle = (n: GraphNode) => (n.size ? { '--size': `${n.size}px` } : undefined)
 </script>
 
 <template>
@@ -540,16 +440,7 @@ const nodeStyle = (n: GraphNode) => {
     @pointercancel="onPointerUp"
     @keydown="onRootKey"
   >
-    <canvas v-if="isStage || isArch" ref="stageCanvas" class="rg-stage-canvas" aria-hidden="true" />
-<div v-if="isArch" class="rg-anim" :class="{ 'is-halted': paused || motionSkipped() }" aria-hidden="true">
-      <span v-if="archHalo" class="rg-halo" :class="`cat-${archHalo.cat}`" :style="archHaloStyle" />
-      <span
-        v-for="k in ARCH_PULSES"
-        :key="k"
-        class="rg-pulse-dot"
-        :ref="(el: unknown) => bindArchPulse(el, k - 1)"
-      />
-    </div>
+    <canvas v-if="isStage" ref="stageCanvas" class="rg-stage-canvas" aria-hidden="true" />
     <div ref="layer" class="rg-layer" :style="layerStyle">
       <svg v-if="!isStage" class="rg-links" aria-hidden="true">
         <g v-for="(l, i) in links" :key="`${l.a}>${l.b}`" :class="linkClass(l)">
@@ -582,12 +473,12 @@ const nodeStyle = (n: GraphNode) => {
             <Icon v-if="n.icon && n.kind !== 'dot'" :name="n.icon" :size="n.kind === 'core' ? 22 : 13" />
           </span>
           <span v-if="n.rank" class="rg-rank">{{ n.rank }}</span>
-          <span v-if="(n.kind === 'hub' || n.kind === 'slab' || n.kind === 'arch') && n.count !== undefined" class="rg-count tnum">{{ n.count }}</span>
+          <span v-if="(n.kind === 'hub' || n.kind === 'slab') && n.count !== undefined" class="rg-count tnum">{{ n.count }}</span>
           <span class="rg-text">
             <span class="rg-label">{{ n.label }}</span>
             <span v-if="n.sub" class="rg-sub">{{ n.sub }}</span>
           </span>
-          <span v-if="n.kind !== 'hub' && n.kind !== 'slab' && n.kind !== 'arch' && n.count !== undefined" class="rg-badge tnum">{{ n.count }}</span>
+          <span v-if="n.kind !== 'hub' && n.kind !== 'slab' && n.count !== undefined" class="rg-badge tnum">{{ n.count }}</span>
         </span>
       </component>
     </div>
@@ -595,7 +486,7 @@ const nodeStyle = (n: GraphNode) => {
     <div class="rg-corner is-tr">
       <slot name="tr" />
       <div v-if="isStage" class="rg-tools" role="toolbar" aria-label="动效控制">
-        <button v-if="!isArch" type="button" title="重播开场" @click="replay"><Icon name="refresh" :size="13" />重播</button>
+        <button type="button" title="重播开场" @click="replay"><Icon name="refresh" :size="13" />重播</button>
         <button type="button" :aria-pressed="paused" :title="paused ? '继续动效' : '暂停动效'" @click="paused = !paused"><Icon :name="paused ? 'play' : 'pause'" :size="13" />{{ paused ? '继续' : '暂停' }}</button>
       </div>
     </div>

@@ -726,25 +726,6 @@
 .rg.is-pannable { cursor: grab; touch-action: none; }
 .rg-stage-canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 
-/* 架构图的动态件走 DOM：脉冲每帧只改 transform，交给合成器，不触发重绘 */
-.rg-anim { position: absolute; inset: 0; pointer-events: none; }
-.rg-pulse-dot {
-  position: absolute; left: 0; top: 0; width: 7px; height: 7px; margin: -3.5px 0 0 -3.5px;
-  border-radius: 50%; background: var(--graph-accent, var(--blue));
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--graph-accent, var(--blue)) 16%, transparent);
-  will-change: transform, opacity;
-}
-.rg-halo {
-  position: absolute; translate: -50% -50%; border-radius: 50%;
-  background: radial-gradient(closest-side, color-mix(in srgb, var(--cat-ink, var(--graph-accent)) 20%, transparent), transparent 74%);
-  /* 必须提升为合成层：否则 opacity 动画会每帧重绘这张径向渐变 */
-  will-change: opacity;
-  animation: rg-halo-breathe 3.8s ease-in-out infinite;
-}
-.rg-anim.is-halted .rg-halo { animation: none; opacity: .7; }
-@keyframes rg-halo-breathe { 0%, 100% { opacity: .45 } 50% { opacity: 1 } }
-@media (prefers-reduced-motion: reduce) { .rg-halo { animation: none; } }
-.rg-layer { position: absolute; inset: 0; transform-origin: 0 0; }
 .rg-links { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
 .rg-link { color: var(--thread-active); }
 .rg-link.cat-1, .rg-link.cat-2, .rg-link.cat-3, .rg-link.cat-4, .rg-link.cat-5 { color: color-mix(in srgb, var(--cat-ink) 75%, transparent); }
@@ -910,43 +891,6 @@
 
 /* dot：Canvas 画圆点，DOM 只留 18px 命中区与悬停标签 */
 .rg.is-stage .rg-node.is-dot .rg-dot { width: 18px; height: 18px; background: none; border: 0; box-shadow: none; }
-
-/* arch：层标签，落在层柱下方。平涂半透明纸色，不用 backdrop-filter——
-   架构图模式下标签静态定位不逐帧移动，但画布在重绘，玻璃模糊仍会跟着重算 */
-.rg.is-stage .rg-node.is-arch .rg-body {
-  flex-direction: column; align-items: center; gap: 1px;
-  min-width: 80px; max-width: 118px; padding: 7px 10px 8px;
-  border-radius: var(--r-sm); text-align: center; white-space: normal;
-  background: color-mix(in srgb, var(--surface-solid) 82%, transparent);
-  border: 1px solid var(--glass-line);
-  box-shadow: var(--edge), var(--e1);
-  backdrop-filter: none;
-}
-.rg.is-stage .rg-node.is-arch .rg-dot { display: none; }
-.rg.is-stage .rg-node.is-arch .rg-rank {
-  font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .1em;
-  text-transform: uppercase; color: var(--cat-ink, var(--ink-faint));
-}
-.rg.is-stage .rg-node.is-arch .rg-label {
-  font-size: 13px; font-weight: 680; letter-spacing: -.01em;
-  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.rg.is-stage .rg-node.is-arch .rg-sub {
-  font-family: var(--font-mono); font-size: 10px; color: var(--ink-faint);
-  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.rg.is-stage .rg-node.is-arch .rg-count {
-  font-size: 17px; font-weight: 640; line-height: 1.15; margin-top: 2px;
-  color: var(--cat-ink, var(--ink));
-}
-.rg.is-stage .rg-node.is-arch .rg-count::after { content: " 人"; font-size: 10.5px; font-weight: 500; color: var(--ink-faint); }
-.rg.is-stage .rg-node.is-arch.is-dim .rg-body { opacity: .5; }
-.rg.is-stage .rg-node.is-arch:hover .rg-body,
-.rg.is-stage .rg-node.is-arch.is-active .rg-body {
-  border-color: color-mix(in srgb, var(--cat-ink) 55%, transparent);
-  box-shadow: var(--edge), var(--e2), 0 0 0 3px color-mix(in srgb, var(--cat-ink) 12%, transparent);
-}
-.rg.is-stage .rg-node.is-arch.is-active .rg-label { color: var(--cat-ink); }
 
 /* slab：岗位台阶，浅色玻璃台面 + 上沿分类色细带 */
 .rg.is-stage .rg-node.is-slab .rg-body {
@@ -1257,23 +1201,84 @@ button.trace-crumb:hover { color: var(--blue); }
   .swatch-row { grid-template-columns: 1fr auto; gap: 8px 12px; }
 }
 
-/* ── 岗位阶梯（图谱舞台） ─────────────────────────────────── */
-.ladder { position: relative; overflow-x: auto; border-radius: var(--r-xl); }
-.ladder-stage { height: max(560px, calc(100dvh - 236px)); }
-.ladder-card {
-  width: auto; max-width: min(760px, calc(100% - 28px));
-  padding: 8px 14px; border-radius: var(--r-md);
-  display: flex; flex-direction: row; align-items: center; gap: 12px; flex-wrap: nowrap;
+/* ── 岗位矩阵：横排岗位小按钮 + 人员网格。纯 DOM，无画布无帧循环 ── */
+.pmat {
+  border-radius: var(--r-xl);
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  box-shadow: var(--edge), var(--e1);
+  overflow: hidden;
 }
-.ladder-card-rank { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .06em; color: var(--cat-ink); white-space: nowrap; }
-.ladder-card h3 { margin: 0; font-size: 15px; font-weight: 720; letter-spacing: -.02em; white-space: nowrap; }
-.ladder-card dl { margin: 0; display: flex; gap: 6px; }
-.ladder-card dl div { padding: 3px 9px; border-radius: var(--r-sm); background: var(--hover-bg); display: flex; align-items: baseline; gap: 6px; }
-.ladder-card dt { font-size: 10.5px; color: var(--ink-faint); white-space: nowrap; }
-.ladder-card dd { margin: 0; font-family: var(--font-mono); font-size: 14px; font-weight: 600; }
-.ladder-card dd small { margin-left: 2px; font-size: 10px; color: var(--ink-faint); }
-.ladder-card-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
-.ladder-empty { position: absolute; inset: 0; }
-@media (max-width: 899px) { .ladder-card { display: none; } }
+.pmat-bar { border-bottom: 1px solid var(--line-strong); background: var(--surface-solid); }
+.pmat-bar-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 13px 16px 9px; }
+.pmat-sum { font-family: var(--font-mono); font-size: 11px; color: var(--ink-faint); }
+.pmat-sum b { font-weight: 600; color: var(--ink-soft); }
+.pmat-chips {
+  display: flex; gap: 7px; padding: 0 16px 14px;
+  overflow-x: auto; overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+}
+/* 岗位小按钮：名称 + 人数，一眼看清有哪些岗位、每个多少人 */
+.pmat-chip {
+  flex: none; display: flex; flex-direction: column; align-items: center; gap: 1px;
+  min-width: 74px; padding: 6px 10px 5px;
+  border: 1px solid var(--line); border-radius: var(--r-sm);
+  background: var(--surface-solid); color: var(--ink);
+  font: inherit; cursor: pointer;
+  transition: border-color .18s ease, background .18s ease, box-shadow .18s ease, translate .18s var(--ease-premium);
+}
+.pmat-chip:hover { border-color: var(--line-strong); translate: 0 -1px; }
+.pmat-chip:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.pmat-chip.is-on {
+  border-color: color-mix(in srgb, var(--blue) 50%, transparent);
+  background: var(--blue-soft);
+  box-shadow: var(--edge), 0 0 0 3px color-mix(in srgb, var(--blue) 12%, transparent);
+}
+.pmat-chip.is-off { opacity: .5; }
+.pmat-chip-name {
+  font-size: 12px; font-weight: 640; letter-spacing: -.005em;
+  max-width: 96px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+}
+.pmat-chip-count { font-family: var(--font-mono); font-size: 11px; font-weight: 600; color: var(--ink-soft); }
+.pmat-chip-count small { margin-left: 2px; font-size: 9.5px; font-weight: 500; color: var(--ink-faint); }
+.pmat-chip.is-on .pmat-chip-count, .pmat-chip.is-on .pmat-chip-count small { color: var(--blue-text); }
+
+.pmat-panel { padding: 16px; }
+.pmat-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin-bottom: 14px; }
+.pmat-panel-id { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.pmat-panel-id h3 { margin: 0; font-size: 16px; font-weight: 720; letter-spacing: -.02em; }
+.pmat-panel-meta { display: flex; align-items: center; gap: 12px; margin-left: auto; }
+.pmat-panel-meta .faint { font-size: 11.5px; }
+.pmat-hint { margin: 0; padding: 30px 0; text-align: center; font-size: 12.5px; color: var(--ink-faint); }
+.pmat-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(196px, 1fr));
+  gap: 8px; margin: 0; padding: 0; list-style: none;
+}
+.pmat-grid > li { min-width: 0; }
+/* 人员格：完整姓名 + 部门，点击打开该用户 */
+.pmat-cell {
+  width: 100%; display: flex; align-items: center; gap: 10px;
+  padding: 9px 11px; border-radius: var(--r-sm);
+  border: 1px solid var(--line); background: var(--surface-solid);
+  font: inherit; color: inherit; text-align: left; cursor: pointer;
+  transition: border-color .18s ease, box-shadow .18s ease, translate .18s var(--ease-premium);
+}
+.pmat-cell:hover {
+  border-color: color-mix(in srgb, var(--blue) 45%, transparent);
+  box-shadow: var(--edge), 0 0 0 3px color-mix(in srgb, var(--blue) 10%, transparent);
+  translate: 0 -1px;
+}
+.pmat-cell:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.pmat-cell.is-off { opacity: .55; }
+.pmat-cell-text { display: flex; flex-direction: column; min-width: 0; gap: 1px; }
+.pmat-cell-name {
+  font-size: 13px; font-weight: 640; letter-spacing: -.005em;
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+}
+.pmat-cell-sub {
+  font-family: var(--font-mono); font-size: 10.5px; color: var(--ink-faint);
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+}
+.pmat-empty { padding: 34px 0; }
 .org-link.is-active { stroke: color-mix(in srgb, var(--cat-ink, var(--blue)) 85%, transparent); stroke-width: 2; }
 .org-pulse { fill: var(--cat-ink, var(--blue)); opacity: 0; stroke: var(--pulse-halo); stroke-width: 6; paint-order: stroke; pointer-events: none; }
