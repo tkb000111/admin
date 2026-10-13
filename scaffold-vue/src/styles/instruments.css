@@ -1017,6 +1017,61 @@ button.trace-crumb:hover { color: var(--blue); }
   .trace-graph:has(.trace-panel) .trace-dock { display: none; }
 }
 
+/* ── 使用手册 · 权限鱼骨（静态图：固定画布坐标，无动画无表盘） ── */
+.manual { display: flex; flex-direction: column; gap: 10px; }
+.manual-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 0 4px; }
+.manual-legend { display: flex; align-items: center; gap: 14px; font-size: 12px; color: var(--ink-soft); flex-wrap: wrap; }
+.manual-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.manual-legend i { width: 8px; height: 8px; border-radius: 50%; background: var(--cat-ink); }
+.manual-legend b { font-family: var(--font-mono); font-weight: 650; color: var(--ink); }
+.manual-frame { position: relative; }
+.manual-scroll { overflow: auto; height: max(420px, calc(100dvh - 248px)); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); }
+.manual-svg { display: block; width: 960px; height: auto; }
+.manual-expand { position: absolute; right: 13px; top: 11px; z-index: 3; padding: 4px 13px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface-solid); color: var(--ink); font: 650 12px/1.5 var(--font-sans); cursor: pointer; box-shadow: var(--e1, 0 1px 3px rgba(0, 0, 0, .06)); }
+.manual-expand:hover { border-color: var(--blue); color: var(--blue); }
+.manual-expand:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.manual-loading { margin: 0; text-align: center; font-size: 12px; color: var(--ink-faint); }
+
+.mn-spine { stroke: var(--line-strong); stroke-width: 1.6; }
+.mn-flow { stroke: var(--blue); stroke-width: 1.4; }
+.mn-arrowhead { fill: var(--blue); }
+.mn-flow-label { font-size: 11px; fill: var(--ink-faint); text-anchor: middle; }
+.mn-fin { stroke: var(--cat-ink); stroke-width: 1.3; fill: none; opacity: .55; }
+
+/* 关系线：静态细线；聚焦时只亮选中条目的线 */
+.mn-link { stroke: var(--cat-ink); stroke-width: 1.1; fill: none; opacity: .4; }
+.mn-link.is-lit { stroke-width: 1.8; opacity: .95; }
+.mn-link.is-dim { opacity: .06; }
+
+/* 节点：小圆点骑线 + 右侧垂直居中的单行信息卡，文字统一居中对齐 */
+.mn-node { text-anchor: middle; }
+.mn-node .mn-dot { fill: var(--cat-ink); stroke: var(--surface-solid); stroke-width: 3; }
+.mn-node .mn-card { fill: var(--surface-solid); stroke: color-mix(in srgb, var(--cat-ink) 42%, transparent); stroke-width: 1.1; }
+.mn-node.is-clickable { cursor: pointer; }
+.mn-node.is-clickable:hover .mn-card,
+.mn-node.is-clickable:focus-visible .mn-card { stroke: var(--cat-ink); stroke-width: 1.4; }
+.mn-node.is-open .mn-card { stroke: var(--blue); stroke-width: 1.6; }
+.mn-node.is-open .mn-title { fill: var(--blue); }
+.mn-node .mn-title { font-size: 12px; font-weight: 650; fill: var(--ink); dominant-baseline: middle; }
+.mn-node .mn-count { font-size: 11px; font-weight: 650; fill: var(--cat-ink); text-anchor: end; dominant-baseline: middle; }
+.mn-node.is-head { text-anchor: middle; }
+.mn-node.is-head rect { fill: var(--cat-5-bg); stroke: var(--cat-5-ink); stroke-width: 1.2; }
+.mn-node.is-head .mn-title { fill: var(--cat-5-ink); }
+
+/* 条目：单行小胶囊，聚焦时未选中的淡化 */
+.mn-item { cursor: pointer; text-anchor: middle; }
+.mn-item rect { fill: var(--surface-solid); stroke: var(--line); }
+.mn-item:hover rect { stroke: color-mix(in srgb, var(--cat-ink) 55%, transparent); }
+.mn-item.is-selected rect { stroke: var(--blue); stroke-width: 1.6; }
+.mn-item.is-lit rect { stroke: color-mix(in srgb, var(--cat-ink) 60%, transparent); }
+.mn-item.is-dim { opacity: .14; }
+.mn-item.is-off rect { stroke-dasharray: 3 3; }
+.mn-item-name { font-size: 11.5px; fill: var(--ink); text-anchor: middle; dominant-baseline: middle; }
+.mn-item-note { font-size: 11px; font-weight: 650; fill: var(--cat-ink); text-anchor: end; dominant-baseline: middle; }
+.mn-item.is-off .mn-item-name,
+.mn-item.is-off .mn-item-note { fill: var(--ink-faint); }
+.mn-more { font-size: 10.5px; text-anchor: middle; fill: var(--ink-faint); }
+
 /* ── 热力格 HeatGrid ── */
 .heat { --cell-gap: 4px; display: flex; flex-direction: column; gap: var(--cell-gap); overflow-x: auto; padding-bottom: 2px; }
 .heat.is-loading { opacity: .5; }
