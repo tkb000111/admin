@@ -1,6 +1,9 @@
 import { ref, type Component } from 'vue'
 import type { RouteRecordRaw } from 'vue-router'
-import { ApiError, authApi, authSession, type CurrentUser, type LoginRequest, type RouteItem } from '@/api'
+import {
+  ApiError, authApi, authSession, portalApi, systemApi,
+  type CurrentUser, type LoginRequest, type QueryParams, type PageResult, type RouteItem,
+} from '@/api'
 import { setPermissions } from '@/directives/permission'
 import type { NavGroup, NavLeaf } from '@/data'
 import { clearDictCache } from './dict'
@@ -34,20 +37,100 @@ export function setSessionRouteReset(handler: () => void) {
 // 刷新页面后先用本地缓存的权限，随后由 refreshUser() 以服务端为准
 setPermissions(currentUser.value?.permissions ?? [])
 
-/** sys_menu.component 的取值必须在此登记 */
-const COMPONENT_MAP: Record<string, () => Promise<{ default: Component }>> = {
-  'dashboard/index': () => import('@/views/Dashboard.vue'),
-  'system/user/index': () => import('@/views/system/Users.vue'),
-  'system/role/index': () => import('@/views/system/Roles.vue'),
-  'system/menu/index': () => import('@/views/system/Menus.vue'),
-  'system/dept/index': () => import('@/views/system/Depts.vue'),
-  'system/post/index': () => import('@/views/system/Posts.vue'),
-  'system/dict/index': () => import('@/views/system/Dict.vue'),
-  'system/config/index': () => import('@/views/system/Configs.vue'),
-  'monitor/operlog/index': () => import('@/views/monitor/OperLog.vue'),
-  'monitor/loginlog/index': () => import('@/views/monitor/LoginLog.vue'),
-  'tool/gen/index': () => import('@/views/tool/Generator.vue'),
+/** 页面登记项：视图 + 取数 + 导出 + 形态，一个页面一条 */
+export interface PageEntry {
+  /** 页面组件：懒加载，构成独立代码分块 */
+  view: () => Promise<{ default: Component }>
+  /** 树型页面：不分页 */
+  tree?: boolean
+  /** 分页条数；不填用默认 10 */
+  pageSize?: number
+  /** 首次取数：参数须与页面挂载时发出的请求一致 */
+  list?: (params: QueryParams) => Promise<PageResult<unknown>>
+  /** 树型取数 */
+  treeList?: (params: QueryParams) => Promise<unknown[]>
+  /** 导出：与列表页导出按钮同源 */
+  exportData?: (params: QueryParams) => Promise<Blob>
+  /** 导出文件名；不填则不显示导出按钮 */
+  exportName?: string
 }
+
+/**
+ * 页面登记表（唯一声明源）
+ * key 取自后端 sys_menu.component。
+ * 新增页面（含插件页）在此登记一次：视图、取数方式、导出配置、形态。
+ * 业务页内不再声明取数方式，统一由外壳按路由元信息取用。
+ */
+export const PAGE_MAP: Record<string, PageEntry> = {
+  'dashboard/index': {
+    view: () => import('@/views/Dashboard.vue'),
+  },
+  'system/user/index': {
+    view: () => import('@/views/system/Users.vue'),
+    list: params => systemApi.users.list(params),
+    exportData: params => systemApi.users.export(params),
+    exportName: '用户列表.csv',
+  },
+  'system/role/index': {
+    view: () => import('@/views/system/Roles.vue'),
+    list: params => systemApi.roles.list(params),
+    exportData: params => systemApi.roles.export(params),
+    exportName: '角色列表.csv',
+  },
+  'system/menu/index': {
+    view: () => import('@/views/system/Menus.vue'),
+    tree: true,
+    treeList: params => systemApi.menus.tree(params),
+    exportData: params => systemApi.menus.export(params),
+    exportName: '菜单列表.csv',
+  },
+  'system/dept/index': {
+    view: () => import('@/views/system/Depts.vue'),
+    tree: true,
+    treeList: params => systemApi.depts.tree(params),
+    exportData: params => systemApi.depts.export(params),
+    exportName: '部门列表.csv',
+  },
+  'system/post/index': {
+    view: () => import('@/views/system/Posts.vue'),
+    list: params => systemApi.posts.list(params),
+    exportData: params => systemApi.posts.export(params),
+    exportName: '岗位列表.csv',
+  },
+  'system/dict/index': {
+    view: () => import('@/views/system/Dict.vue'),
+    list: params => systemApi.dictTypes.list(params),
+    exportData: params => systemApi.dictTypes.export(params),
+    exportName: '字典类型.csv',
+  },
+  'system/config/index': {
+    view: () => import('@/views/system/Configs.vue'),
+    list: params => systemApi.configs.list(params),
+    exportData: params => systemApi.configs.export(params),
+    exportName: '参数配置.csv',
+  },
+  'monitor/operlog/index': {
+    view: () => import('@/views/monitor/OperLog.vue'),
+    list: params => systemApi.operLogs.list(params),
+    exportData: params => systemApi.operLogs.export(params),
+    exportName: '操作日志.csv',
+  },
+  'monitor/loginlog/index': {
+    view: () => import('@/views/monitor/LoginLog.vue'),
+    list: params => systemApi.loginLogs.list(params),
+    exportData: params => systemApi.loginLogs.export(params),
+    exportName: '登录日志.csv',
+  },
+  'tool/gen/index': {
+    view: () => import('@/views/tool/Generator.vue'),
+    list: params => portalApi.generator.tables.list(params),
+  },
+}
+
+/** 组件标识 → 页面组件：由登记表派生，业务页不重复声明 */
+const COMPONENT_MAP: Record<string, () => Promise<{ default: Component }>> = Object.fromEntries(
+  Object.entries(PAGE_MAP).map(([key, entry]) => [key, entry.view]),
+)
 
 /** 路由名由路径推导：/system/user → system-user */
 export function routeNameOf(path: string) {
@@ -91,7 +174,8 @@ function buildRoutes(groups: NavGroup[], tree: RouteItem[]): RouteRecordRaw[] {
     path: item.path.replace(/^\//, ''),
     name: item.key,
     component: COMPONENT_MAP[componentByPath.get(item.path) ?? ''],
-    meta: { title: item.label, group: group.single ? undefined : group.label },
+    // componentKey 是「页面 ↔ 数据契约」的连接键，外壳据此预取
+    meta: { title: item.label, group: group.single ? undefined : group.label, componentKey: componentByPath.get(item.path) ?? '' },
   })))
 }
 

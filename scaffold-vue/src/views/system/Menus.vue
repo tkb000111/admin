@@ -17,9 +17,6 @@ import { pattern, required, validate } from '@/utils/validate'
 
 const list = useTreeListPage<Menu, { keyword: string; status: string }>({
   query: { keyword: '', status: '' },
-  fetch: params => systemApi.menus.tree(params) as unknown as Promise<Menu[]>,
-  exporter: params => systemApi.menus.export(params),
-  exportName: '菜单列表.csv',
 })
 
 const columns: Column[] = [

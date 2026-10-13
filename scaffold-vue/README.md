@@ -32,7 +32,7 @@ npm run build
 
 ## 扩展约定
 
-新列表先复用 `ListPage` 与列表 composable，新表单先复用 `FormDialog`，权限动作使用 `PermissionButton`；接口复用 `api/http.ts`。在 `auth.ts` 的 `COMPONENT_MAP` 注册页面，再通过菜单管理配置路径、组件标识与权限码。
+新列表先复用 `ListPage` 与列表 composable，新表单先复用 `FormDialog`，权限动作使用 `PermissionButton`；接口复用 `api/http.ts`。在 `auth.ts` 的 `PAGE_MAP` 登记页面（视图 + 取数 + 导出 + 分页形态，一个页面一条），再通过菜单管理配置路径、组件标识与权限码。业务页只写查询字段与列，取数方式由登记表提供，不重复声明。
 
 退出和 401 均通过统一会话清理撤销动态路由与缓存；不得在页面直接修改认证存储或路由就绪标记。旧请求只能更新发起时仍有效的会话。
 

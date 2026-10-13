@@ -21,9 +21,6 @@ const CHOICE_LABEL: Record<string, string> = { light: '浅色', dark: '深色', 
 const route = useRoute()
 const list = useListPage<ConfigRow, { keyword: string }>({
   query: { keyword: typeof route.query.keyword === 'string' ? route.query.keyword : '' },
-  fetch: params => systemApi.configs.list(params) as Promise<any>,
-  exporter: params => systemApi.configs.export(params),
-  exportName: '参数配置.csv',
 })
 
 const columns: Column[] = [

@@ -4,6 +4,8 @@
 .vscode/
 .cursor/
 .claude/
+.trae/
+.workbuddy/
 .npm-cache/
 .cache/
 **/.env

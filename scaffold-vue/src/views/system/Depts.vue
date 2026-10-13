@@ -15,9 +15,6 @@ import { email, phone, required, validate } from '@/utils/validate'
 
 const list = useTreeListPage<Dept, { keyword: string; status: string }>({
   query: { keyword: '', status: '' },
-  fetch: params => systemApi.depts.tree(params) as unknown as Promise<Dept[]>,
-  exporter: params => systemApi.depts.export(params),
-  exportName: '部门列表.csv',
 })
 
 /* ── 画布视图：组织架构 + 四角浮动面板 ── */

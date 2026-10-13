@@ -14,7 +14,6 @@ interface TableRow { id: number; tableName: string; tableComment: string; classN
 
 const list = useListPage<TableRow, { keyword: string }>({
   query: { keyword: '' },
-  fetch: params => portalApi.generator.tables.list(params) as Promise<any>,
 })
 
 const columns: Column[] = [

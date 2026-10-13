@@ -62,6 +62,20 @@ npm run dev
 
 种子库管理员为 `admin`，开发密码为 `admin123`；仅用于本地开发，接入实际环境前请修改密码并配置自己的数据库与 Redis 凭据。种子组织和用户为示例，电话留空，邮箱使用 `example.com`。验证码使用页面显示的字符。超级管理员可见全部启用且可见的已注册菜单，并拥有全部操作权限；其余种子角色默认未授予菜单，需在角色管理中分配。无可用菜单的账号登录后显示“暂未分配可用菜单”。
 
+### 开发模式（后端保存即重启）
+
+日常迭代用 `./启动.sh 开发`：以 `spring-boot:run` 启动开发后端（默认 `18085`，被占自动顺延），已启用 devtools，**不打包、不经网关**。
+
+```bash
+./启动.sh 开发        # 终端一：开发后端（首次编译全部模块，约一分钟）
+# 改完 Java 代码后（任何模块），在 scaffold-system 目录执行：
+mvn -pl scaffold-admin -am compile -q     # 增量数秒，触发自动重启
+# 终端二：前端 dev server（HMR，即改即见）
+VITE_API_PROXY_TARGET=http://localhost:18085 npm run dev
+```
+
+后端访问 `http://localhost:<开发端口>`，前端访问 `http://localhost:5173`。devtools 仅在开发模式生效，打成 jar 运行（含 `./启动.sh` 与桌面版）时自动关闭。发布前仍按上方正式流程打包并跑测试。
+
 ## 新业务模块
 
 1. 先设计业务表与中文字段含义；默认包含 `create_by`、`update_by`、`create_time`、`update_time` 四个审计字段。

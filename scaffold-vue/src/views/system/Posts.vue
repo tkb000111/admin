@@ -14,9 +14,6 @@ interface PostRow { id: number; postCode: string; postName: string; sort: number
 
 const list = useListPage<PostRow, { keyword: string; status: string }>({
   query: { keyword: '', status: '' },
-  fetch: params => systemApi.posts.list(params) as Promise<any>,
-  exporter: params => systemApi.posts.export(params),
-  exportName: '岗位列表.csv',
 })
 
 /* ── 阶梯视图：按 sort 排成上升台阶，点岗位看成员触须 ── */

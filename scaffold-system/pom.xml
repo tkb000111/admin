@@ -42,6 +42,8 @@
         <jjwt.version>0.12.6</jjwt.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+        <!-- 开发模式：mvn -pl scaffold-admin -am spring-boot:run 时，run 目标只在声明了 false 的模块执行 -->
+        <spring-boot.run.skip>true</spring-boot.run.skip>
     </properties>
 
     <dependencyManagement>

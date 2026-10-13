@@ -25,9 +25,6 @@ function openTrace(row: UserRow) {
 const list = useListPage<UserRow, { keyword: string; status: string; deptId: number | null }>({
   // 从命令面板选中用户时带入账号关键词
   query: { keyword: typeof route.query.keyword === 'string' ? route.query.keyword : '', status: '', deptId: null },
-  fetch: params => systemApi.users.list(params),
-  exporter: params => systemApi.users.export(params),
-  exportName: '用户列表.csv',
 })
 
 const columns: Column[] = [

@@ -13,6 +13,11 @@
     <artifactId>scaffold-admin</artifactId>
     <name>scaffold-admin</name>
 
+    <properties>
+        <!-- 本模块是唯一可运行模块：开发模式 spring-boot:run 只在这里真正执行 -->
+        <spring-boot.run.skip>false</spring-boot.run.skip>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>com.scaffold</groupId>
@@ -34,6 +39,13 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
+        </dependency>
+        <dependency>
+            <!-- 开发期热重启：classpath  class 文件变化即自动重启；打成 jar 运行时自动失效 -->
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-devtools</artifactId>
+            <scope>runtime</scope>
+            <optional>true</optional>
         </dependency>
     </dependencies>
 

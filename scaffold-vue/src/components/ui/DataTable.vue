@@ -1,5 +1,5 @@
 <script setup lang="ts" generic="Row extends Record<string, any>">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import Icon from '@/components/Icon.vue'
 import Checkbox from './Checkbox.vue'
 import EmptyState from './EmptyState.vue'
@@ -27,11 +27,17 @@ const props = withDefaults(defineProps<{
   /** 树形表格默认展开到第几层（0 = 全部收起） */
   expandDepth?: number
   minWidth?: number
+  /** 虚拟滚动：'auto' 按行数自动启用（默认），'on' 强制，'off' 关闭 */
+  virtual?: 'auto' | 'on' | 'off'
+  /** 超过多少行才启用虚拟滚动 */
+  virtualThreshold?: number
 }>(), {
   rowKey: 'id',
   selected: () => [],
   emptyText: '暂无数据',
   expandDepth: 1,
+  virtual: 'auto',
+  virtualThreshold: 60,
 })
 
 const emit = defineEmits<{
@@ -40,6 +46,8 @@ const emit = defineEmits<{
 }>()
 
 const body = ref<HTMLElement | null>(null)
+const wrap = ref<HTMLElement | null>(null)
+const table = ref<HTMLElement | null>(null)
 const expanded = ref(new Set<string | number>())
 
 interface FlatRow { row: Row; depth: number; hasChildren: boolean }
@@ -114,12 +122,110 @@ function cellStyle(col: Column) {
   }
 }
 
+/* ============================================================
+   虚拟滚动
+
+   与外壳共用同一个滚动容器（内容区），不额外套滚动层：
+   按固定行高推算可视区间，只渲染可视行 + 少量缓冲，
+   上下各用一条占位行撑出真实总高，滚动条长度与真实数据量一致。
+   行数不多时不启用——小列表全量渲染，浏览器查找（Ctrl+F）也能命中。
+   ============================================================ */
+
+const OVERSCAN = 8
+const virtualOn = computed(() =>
+  props.virtual === 'on' || (props.virtual === 'auto' && flatRows.value.length > props.virtualThreshold))
+
+const rowH = ref(48)
+const viewportH = ref(0)
+const tableTop = ref(0)
+const scrollTop = ref(0)
+
+/** 行高来自设计令牌（48 / 56 / 40 随密度切换），与 .table td 用同一个变量 */
+function readRowHeight() {
+  const raw = getComputedStyle(document.documentElement).getPropertyValue('--row-h')
+  const parsed = Number.parseFloat(raw)
+  if (Number.isFinite(parsed) && parsed > 0) rowH.value = parsed
+}
+
+/** 最近的纵向滚动容器；没有则退化为文档滚动容器 */
+function findScroller(): HTMLElement | null {
+  let el = table.value?.parentElement ?? null
+  while (el) {
+    const y = getComputedStyle(el).overflowY
+    if (y === 'auto' || y === 'scroll') return el
+    el = el.parentElement
+  }
+  return (document.scrollingElement as HTMLElement | null)
+}
+
+function measure() {
+  const scroller = findScroller()
+  if (!scroller || !table.value) return
+  const scrollerRect = scroller.getBoundingClientRect()
+  const tableRect = table.value.getBoundingClientRect()
+  // 表格上沿相对滚动容器内容顶部的位置
+  tableTop.value = tableRect.top - scrollerRect.top + scroller.scrollTop
+  viewportH.value = scroller.clientHeight
+  scrollTop.value = scroller.scrollTop
+}
+
+const visibleRange = computed(() => {
+  const total = flatRows.value.length
+  const first = Math.max(0, Math.floor((scrollTop.value - tableTop.value) / rowH.value) - OVERSCAN)
+  const count = Math.ceil(viewportH.value / rowH.value) + OVERSCAN * 2
+  const start = Math.min(first, Math.max(0, total - 1))
+  const end = Math.min(total, start + Math.max(1, count))
+  return { start, end }
+})
+
+const visibleRows = computed(() =>
+  virtualOn.value ? flatRows.value.slice(visibleRange.value.start, visibleRange.value.end) : flatRows.value)
+const padTop = computed(() => virtualOn.value ? visibleRange.value.start * rowH.value : 0)
+const padBottom = computed(() =>
+  virtualOn.value ? Math.max(0, (flatRows.value.length - visibleRange.value.end) * rowH.value) : 0)
+
+let frame = 0
+function schedule() {
+  if (frame) return
+  frame = requestAnimationFrame(() => { frame = 0; measure() })
+}
+
+let densityObserver: MutationObserver | null = null
+let resizeObserver: ResizeObserver | null = null
+
+onMounted(() => {
+  readRowHeight()
+  measure()
+  findScroller()?.addEventListener('scroll', schedule, { passive: true })
+  // 密度切换会改变行高，Token 变化后重算区间
+  densityObserver = new MutationObserver(() => { readRowHeight(); schedule() })
+  densityObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-density'] })
+  resizeObserver = new ResizeObserver(schedule)
+  if (table.value) resizeObserver.observe(table.value)
+})
+
+onBeforeUnmount(() => {
+  if (frame) cancelAnimationFrame(frame)
+  findScroller()?.removeEventListener('scroll', schedule)
+  densityObserver?.disconnect()
+  resizeObserver?.disconnect()
+})
+
+// 数据量或展开态变化后重新定位可视区间
+watch(() => [flatRows.value.length, expanded.value.size], () => nextTick(schedule))
+
 defineExpose({ expandAll, collapseAll })
 </script>
 
 <template>
-  <div class="table-wrap">
-    <table class="table" :style="minWidth ? { minWidth: `${minWidth}px` } : undefined" :aria-busy="loading">
+  <div ref="wrap" class="table-wrap">
+    <table
+      ref="table"
+      class="table"
+      :style="minWidth ? { minWidth: `${minWidth}px` } : undefined"
+      :aria-busy="loading"
+      :aria-rowcount="virtualOn ? flatRows.length + 1 : undefined"
+    >
       <thead>
         <tr>
           <th v-if="selectable" class="col-check">
@@ -143,8 +249,11 @@ defineExpose({ expandAll, collapseAll })
           <td :colspan="colspan" style="height: auto"><EmptyState :title="emptyText" /></td>
         </tr>
         <template v-else>
+          <tr v-if="padTop" class="virtual-pad" aria-hidden="true">
+            <td :colspan="colspan" :style="{ height: `${padTop}px`, padding: 0, border: 0 }" />
+          </tr>
           <tr
-            v-for="item in flatRows"
+            v-for="item in visibleRows"
             :key="item.row[rowKey]"
             :class="['data-row', selected.includes(item.row[rowKey]) && 'is-selected']"
             :style="loading ? { opacity: .55 } : undefined"
@@ -168,6 +277,9 @@ defineExpose({ expandAll, collapseAll })
               <slot v-else-if="$slots[`cell-${col.key}`]" :name="`cell-${col.key}`" :row="item.row" :depth="item.depth" />
               <span v-else class="cell-text" :title="String(item.row[col.key] ?? '')">{{ item.row[col.key] ?? '—' }}</span>
             </td>
+          </tr>
+          <tr v-if="padBottom" class="virtual-pad" aria-hidden="true">
+            <td :colspan="colspan" :style="{ height: `${padBottom}px`, padding: 0, border: 0 }" />
           </tr>
         </template>
       </tbody>

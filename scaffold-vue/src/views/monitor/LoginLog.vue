@@ -17,9 +17,6 @@ interface LoginRow { id: number; username: string; status: number; msg?: string;
 
 const list = useListPage<LoginRow, { keyword: string; status: string }>({
   query: { keyword: '', status: '' },
-  fetch: params => systemApi.loginLogs.list(params) as Promise<any>,
-  exporter: params => systemApi.loginLogs.export(params),
-  exportName: '登录日志.csv',
 })
 
 const columns: Column[] = [

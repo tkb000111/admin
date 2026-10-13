@@ -43,9 +43,6 @@ const scopeCodeOf = (label?: string) => SCOPES.find(s => s.name === label || s.c
 
 const list = useListPage<RoleRow, { keyword: string; status: string }>({
   query: { keyword: '', status: '' },
-  fetch: params => systemApi.roles.list(params) as Promise<any>,
-  exporter: params => systemApi.roles.export(params),
-  exportName: '角色列表.csv',
 })
 
 const columns: Column[] = [

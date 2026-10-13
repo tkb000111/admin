@@ -24,9 +24,6 @@ const TONES = [
 
 const list = useListPage<TypeRow, { keyword: string; status: string }>({
   query: { keyword: '', status: '' },
-  fetch: params => systemApi.dictTypes.list(params) as Promise<any>,
-  exporter: params => systemApi.dictTypes.export(params),
-  exportName: '字典类型.csv',
 })
 
 const columns: Column[] = [

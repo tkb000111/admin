@@ -32,9 +32,6 @@ const route = useRoute()
 const list = useListPage<OperRow, { keyword: string; result: string }>({
   // 从工作台泳道跳转时带入模块关键词
   query: { keyword: typeof route.query.keyword === 'string' ? route.query.keyword : '', result: '' },
-  fetch: params => systemApi.operLogs.list(params) as Promise<any>,
-  exporter: params => systemApi.operLogs.export(params),
-  exportName: '操作日志.csv',
 })
 
 const columns: Column[] = [
