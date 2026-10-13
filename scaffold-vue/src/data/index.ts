@@ -26,6 +26,38 @@ export interface NavGroup {
   items: NavLeaf[]
 }
 
+/* ── 双列导航：功能 → 小节? → 模块（由 /auth/routes 树归一化而来） ── */
+
+/** 模块：模块列里可点开的一个页面 */
+export interface FeatureNavModule {
+  /** 路由名（由路径推导），同时是 KeepAlive 缓存名 */
+  key: string
+  label: string
+  icon: string
+  path: string
+  /** 所属功能名（供标签与面包屑） */
+  feature: string
+  /** 所属小节名；功能直属模块（如工作台）没有小节 */
+  section?: string
+}
+
+/** 小节：模块列内不可点的视觉分组标题（如系统管理 / 监控 / 工具） */
+export interface FeatureNavSection {
+  key: string
+  label: string
+  modules: FeatureNavModule[]
+}
+
+/** 功能：功能列里可点的一项；点它只切换模块列（浏览），不打开页面 */
+export interface FeatureNavFeature {
+  key: string
+  label: string
+  icon: string
+  /** 功能直属模块（无小节），渲染在小节之前 */
+  modules: FeatureNavModule[]
+  sections: FeatureNavSection[]
+}
+
 /* ── 业务行类型（与后端返回字段对应） ─────────────────────── */
 export interface BaseRow {
   id: number

@@ -378,6 +378,13 @@ function onKey(event: KeyboardEvent, node: GraphNode) {
 function onRootKey(event: KeyboardEvent) {
   if (event.key === 'Escape' && event.target === root.value) emit('back')
 }
+/* 页面空白处（焦点在 body / html，如图谱节点退场后焦点丢失）时 Esc 同样逐层返回；
+   焦点在图谱内由容器与节点的 keydown 处理，弹层与控件内由各自组件处理，不会重复触发 */
+function onGlobalKey(event: KeyboardEvent) {
+  if (event.key !== 'Escape') return
+  const target = event.target as HTMLElement | null
+  if (target === document.body || target === document.documentElement) emit('back')
+}
 
 /* ── 尺寸与生命周期 ── */
 let resizeObserver: ResizeObserver | null = null
@@ -393,6 +400,7 @@ onMounted(() => {
   }
   loop.start(root.value)
   if (props.burstKey) burstAt = performance.now()
+  window.addEventListener('keydown', onGlobalKey)
   // 主题切换后重新取发光色
   themeObserver = new MutationObserver(() => { palette = null })
   themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
@@ -402,6 +410,7 @@ onBeforeUnmount(() => {
   loop.stop()
   resizeObserver?.disconnect()
   themeObserver?.disconnect()
+  window.removeEventListener('keydown', onGlobalKey)
   unbindViewport()
 })
 // 节点变化后补一帧，保证减少动态效果时立即落到终态

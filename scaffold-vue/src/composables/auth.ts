@@ -1,23 +1,45 @@
-import { ref, type Component } from 'vue'
+import { computed, defineComponent, h, ref, type Component } from 'vue'
 import type { RouteRecordRaw } from 'vue-router'
 import {
   ApiError, authApi, authSession, portalApi, systemApi,
   type CurrentUser, type LoginRequest, type QueryParams, type PageResult, type RouteItem,
 } from '@/api'
+import { APP } from '@/data'
 import { setPermissions } from '@/directives/permission'
-import type { NavGroup, NavLeaf } from '@/data'
+import type { FeatureNavFeature, FeatureNavModule, NavGroup, NavLeaf } from '@/data'
+import { buildFeatureNav, modulesOf, routeNameOf } from './featureNav'
+import { tabs } from './tabs'
 import { clearDictCache } from './dict'
 import { clearDeptCache } from './dept'
+
+// 供旧调用方继续从 auth 导入路由名推导
+export { routeNameOf }
 
 /* ============================================================
    登录态、权限与动态菜单。
    菜单与路由完全来自后端 /api/auth/routes（sys_menu 表），
    前端只维护「组件路径 → 页面组件」的映射。
+   导航解读统一在 featureNav.ts：任意深度的树 → 功能/小节/模块。
    ============================================================ */
 
 export const authed = ref<boolean>(authSession.isAuthenticated())
 export const currentUser = ref<CurrentUser | null>(authSession.user() as CurrentUser | null)
-export const navGroups = ref<NavGroup[]>([])
+/** 双列导航数据：功能 → 小节? → 模块 */
+export const featureNav = ref<FeatureNavFeature[]>([])
+/** 旧两级导航形状（分组标题 → 页面），供工作台快捷入口等场景派生 */
+export const navGroups = computed<NavGroup[]>(() => featureNav.value.flatMap(feature => [
+  ...(feature.modules.length ? [{
+    key: feature.key, label: feature.label, icon: feature.icon, single: true as const,
+    items: feature.modules.map(toLeaf),
+  }] : []),
+  ...feature.sections.map(section => ({
+    key: section.key, label: section.label, icon: feature.icon,
+    items: section.modules.map(toLeaf),
+  })),
+]))
+
+const toLeaf = (module: FeatureNavModule): NavLeaf => ({ key: module.key, label: module.label, icon: module.icon, path: module.path })
+
 export const dynamicRoutes = ref<RouteRecordRaw[]>([])
 export const sessionVersion = ref(0)
 /** 页面组件标识 → 当前账号可访问的路由路径（如 monitor/operlog/index → /monitor/operlog） */
@@ -64,6 +86,9 @@ export interface PageEntry {
 export const PAGE_MAP: Record<string, PageEntry> = {
   'dashboard/index': {
     view: () => import('@/views/Dashboard.vue'),
+  },
+  'manual/index': {
+    view: () => import('@/views/manual/Manual.vue'),
   },
   'system/user/index': {
     view: () => import('@/views/system/Users.vue'),
@@ -133,60 +158,57 @@ const COMPONENT_MAP: Record<string, () => Promise<{ default: Component }>> = Obj
 )
 
 /** 路由名由路径推导：/system/user → system-user */
-export function routeNameOf(path: string) {
-  return path.replace(/^\/+|\/+$/g, '').replace(/\//g, '-') || 'home'
-}
-
 function normalizePath(path?: string) {
   if (!path) return ''
   return path.startsWith('/') ? path : `/${path}`
 }
 
-function leafOf(item: RouteItem): NavLeaf | null {
-  const path = normalizePath(item.path)
-  if (!path || !item.component || !COMPONENT_MAP[item.component]) return null
-  return { key: routeNameOf(path), label: item.name, icon: item.icon || 'file', path }
-}
-
-function buildNav(tree: RouteItem[]): NavGroup[] {
-  const groups: NavGroup[] = []
-  for (const node of tree) {
-    const children = node.children ?? []
-    if (!children.length) {
-      const leaf = leafOf(node)
-      if (leaf) groups.push({ key: leaf.key, label: leaf.label, icon: leaf.icon, single: true, items: [leaf] })
-      continue
-    }
-    const items = children.map(leafOf).filter((leaf): leaf is NavLeaf => Boolean(leaf))
-    if (items.length) groups.push({ key: `group-${node.id ?? node.name}`, label: node.name, icon: node.icon || 'file', items })
+/**
+ * 页面缓存外壳：以路由名为组件名包住真实页面组件，
+ * KeepAlive 的 include 名单（标签 key = 路由名）据此匹配缓存。
+ * 解析结果自行记忆，分块仍只加载一次。
+ */
+function pageShell(name: string, view: () => Promise<{ default: Component }>) {
+  let cached: Promise<Component> | null = null
+  return () => {
+    cached ??= view().then(mod => defineComponent({
+      name,
+      setup: () => () => h(mod.default),
+    }))
+    return cached
   }
-  return groups
 }
 
-function buildRoutes(groups: NavGroup[], tree: RouteItem[]): RouteRecordRaw[] {
+function buildRoutes(features: FeatureNavFeature[], tree: RouteItem[]): RouteRecordRaw[] {
   const componentByPath = new Map<string, string>()
   const walk = (nodes: RouteItem[]) => nodes.forEach(node => {
     if (node.path && node.component) componentByPath.set(normalizePath(node.path), node.component)
     walk(node.children ?? [])
   })
   walk(tree)
-  return groups.flatMap(group => group.items.map(item => ({
-    path: item.path.replace(/^\//, ''),
-    name: item.key,
-    component: COMPONENT_MAP[componentByPath.get(item.path) ?? ''],
-    // componentKey 是「页面 ↔ 数据契约」的连接键，外壳据此预取
-    meta: { title: item.label, group: group.single ? undefined : group.label, componentKey: componentByPath.get(item.path) ?? '' },
-  })))
+  return features.flatMap(feature => modulesOf(feature).map(module => {
+    const componentKey = componentByPath.get(module.path) ?? ''
+    return {
+      path: module.path.replace(/^\//, ''),
+      name: module.key,
+      component: pageShell(module.key, COMPONENT_MAP[componentKey]),
+      // feature / section 供面包屑与标签展示；componentKey 是「页面 ↔ 数据契约」的连接键，外壳据此预取
+      meta: { title: module.label, feature: feature.label, section: module.section, componentKey },
+    }
+  }))
 }
 
 export async function loadRoutes() {
   const version = sessionVersion.value
   const data = await authApi.routes()
   if (version !== sessionVersion.value) return
-  const groups = buildNav(data.routes)
-  navGroups.value = groups
-  dynamicRoutes.value = buildRoutes(groups, data.routes)
-  const visible = new Set(groups.flatMap(group => group.items.map(item => item.path)))
+  const features = buildFeatureNav(data.routes, {
+    fallbackLabel: APP.shortName,
+    isPage: item => Boolean(item.component && COMPONENT_MAP[item.component]),
+  })
+  featureNav.value = features
+  dynamicRoutes.value = buildRoutes(features, data.routes)
+  const visible = new Set(features.flatMap(feature => modulesOf(feature).map(module => module.path)))
   const paths: Record<string, string> = {}
   const walk = (nodes: RouteItem[]) => nodes.forEach(node => {
     const path = normalizePath(node.path)
@@ -238,9 +260,10 @@ export function clearSession() {
   authed.value = false
   resetSessionRoutes?.()
   currentUser.value = null
-  navGroups.value = []
+  featureNav.value = []
   dynamicRoutes.value = []
   componentPaths.value = {}
+  tabs.clear()
   setPermissions([])
   authSession.clear()
   clearDictCache()

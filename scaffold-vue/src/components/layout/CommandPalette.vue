@@ -4,7 +4,8 @@ import { useRoute, useRouter } from 'vue-router'
 import Icon from '@/components/Icon.vue'
 import Avatar from '@/components/ui/Avatar.vue'
 import { systemApi, type UserRow } from '@/api'
-import { navGroups, pathOf } from '@/composables/auth'
+import { featureNav, pathOf } from '@/composables/auth'
+import { tabs } from '@/composables/tabs'
 import { appearance } from '@/composables/appearance'
 import { overlayEnter, overlayLeave, revealCascade, slideThumb, typeOut } from '@/composables/motion'
 import { createFocusTrap } from '@/composables/focus'
@@ -46,7 +47,11 @@ watch(() => route.path, (path) => {
   try { localStorage.setItem(RECENT_KEY, JSON.stringify(recent.value)) } catch { /* 忽略 */ }
 }, { immediate: true })
 
-const pages = computed(() => navGroups.value.flatMap(g => g.items.map(i => ({ ...i, group: g.single ? '' : g.label }))))
+/* 页面：按新导航结构遍历（功能 → 小节? → 模块），出处写清来自哪个功能/小节 */
+const pages = computed(() => featureNav.value.flatMap(f => [
+  ...f.modules.map(m => ({ ...m, group: f.label })),
+  ...f.sections.flatMap(s => s.modules.map(m => ({ ...m, group: `${f.label} · ${s.label}` }))),
+]))
 const match = (text: string, key: string) => text.toLowerCase().includes(key)
 
 const entries = computed<Entry[]>(() => {
@@ -120,9 +125,12 @@ function typeAsk(question: string) {
 }
 
 function openAnswerChip(chip: AnswerChip) {
-  if (!chip.to) return
+  const to = chip.to
+  if (!to) return
   emit('close')
-  router.push(chip.to)
+  if (typeof to === 'string') tabs.open(to)
+  else if ('path' in to && to.path) tabs.open({ path: to.path, query: to.query as Record<string, string> | undefined })
+  else router.push(to)
 }
 
 /* ── 用户搜索：有用户列表权限时防抖查询 ── */
@@ -146,7 +154,8 @@ watch(keyword, (value) => {
 
 function go(path: string, query?: Record<string, string>) {
   emit('close')
-  router.push({ path, query })
+  // 打开页面统一走标签中心：afterEach 登记 / 激活标签
+  tabs.open(query ? { path, query } : path)
 }
 function act(name: 'appearance' | 'password' | 'logout') {
   emit('close')

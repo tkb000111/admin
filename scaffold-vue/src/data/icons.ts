@@ -22,6 +22,7 @@ export const ICON_PATHS: Record<string, string> = {
   layers: 'M12 3 3 8l9 5 9-5-9-5zm-9 9 9 5 9-5m-18 4 9 5 9-5',
   grid: 'M4 4h6v6H4V4zm10 0h6v6h-6V4zM4 14h6v6H4v-6zm10 0h6v6h-6v-6z',
   home: 'M4 11 12 4l8 7v9h-5v-6H9v6H4v-9z',
+  bookOpen: 'M12 7v14M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-5a4 4 0 0 0-4 4 4 4 0 0 0-4-4H3z',
   chart: 'M4 20V10m6 10V4m6 16v-7m4 7H3',
   activity: 'M3 12h4l3-7 4 14 3-7h4',
   clock: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zm0-13v4l3 2',
@@ -77,5 +78,5 @@ export const ICON_PATHS: Record<string, string> = {
 export const MENU_ICON_OPTIONS = [
   'dashboard', 'gear', 'users', 'user', 'role', 'shield', 'menu', 'dept', 'post', 'dict', 'log', 'file',
   'lock', 'tool', 'command', 'code', 'database', 'monitor', 'layers', 'grid', 'home', 'chart', 'activity',
-  'clock', 'bell', 'mail', 'key', 'sliders',
+  'clock', 'bell', 'mail', 'key', 'sliders', 'bookOpen',
 ]

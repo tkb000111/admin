@@ -1,6 +1,8 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import { setUnauthorizedHandler } from '@/api'
-import { authed, clearSession, dynamicRoutes, loadRoutes, navGroups, refreshUser, sessionVersion, setSessionRouteReset } from '@/composables/auth'
+import { authed, clearSession, dynamicRoutes, featureNav, loadRoutes, refreshUser, sessionVersion, setSessionRouteReset } from '@/composables/auth'
+import { modulesOf } from '@/composables/featureNav'
+import { tabs } from '@/composables/tabs'
 import { pushToast } from '@/composables/toast'
 import { APP } from '@/data'
 import AppShell from '@/components/layout/AppShell.vue'
@@ -28,10 +30,14 @@ let routeLoad: Promise<boolean> | null = null
 let cancelRouteLoad: (() => void) | null = null
 const removeRoutes: Array<() => void> = []
 
-/** 登录后的落点：有工作台权限去工作台，否则去第一个可见菜单 */
+/** 登录后的默认落点：第一个功能的第一个模块（如「后台管理 · 工作台」），无菜单时去提示页 */
 export function homePath() {
-  return navGroups.value[0]?.items[0]?.path ?? '/no-access'
+  const feature = featureNav.value[0]
+  return (feature ? modulesOf(feature)[0]?.path : undefined) ?? '/no-access'
 }
+
+// 标签中心绑定真实路由：afterEach 里注册 / 激活标签，关到最后回到默认落点
+tabs.bind(router, homePath)
 
 export function resetRoutes() {
   removeRoutes.splice(0).forEach(remove => remove())
@@ -52,6 +58,8 @@ async function ensureRoutes() {
     if (version !== sessionVersion.value || !authed.value) return false
     dynamicRoutes.value.forEach(route => removeRoutes.push(router.addRoute('root', route)))
     routesReady = true
+    // 路由已注册：恢复上次打开的标签（按当前账号菜单校验，失效条目丢弃）
+    tabs.restore()
     return true
   })()])
   routeLoad = task
@@ -83,9 +91,14 @@ router.beforeEach(async (to) => {
       return { name: 'login' }
     }
     // 动态路由刚注册：按原地址重新解析，保留查询参数（深链如 ?trace=user:1）
-    return to.path === '/' ? { path: homePath(), replace: true } : { path: to.path, query: to.query, hash: to.hash, replace: true }
+    return to.path === '/'
+      ? { path: tabs.restoredLanding() ?? homePath(), replace: true }
+      : { path: to.path, query: to.query, hash: to.hash, replace: true }
   }
-  if (to.path === '/') return { path: homePath(), replace: true }
+  if (to.path === '/') {
+    // 有恢复出的上次工作台面就回到那里，否则回默认落点
+    return { path: tabs.restoredLanding() ?? homePath(), replace: true }
+  }
   return true
 })
 

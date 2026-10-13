@@ -72,6 +72,13 @@ function inspect(item: LoginHeatmap['anomalies'][number]) {
 }
 
 const route = useRoute()
+// 页面被缓存后再次深链进入（问答 / 异常卡片）时，重新应用地址里的筛选条件
+watch(() => route.query, (query) => {
+  if (typeof query.keyword !== 'string' || query.keyword === list.query.keyword) return
+  list.query.keyword = query.keyword
+  if (query.status === '0' || query.status === '1') list.query.status = query.status
+  list.search()
+})
 watch(range, () => { loadStats(); loadHeat() })
 onMounted(() => {
   // 问答与告警跳转带来的筛选条件

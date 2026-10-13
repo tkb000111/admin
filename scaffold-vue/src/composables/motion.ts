@@ -154,23 +154,34 @@ export function revealPage(page: HTMLElement | null) {
   pageEnter(page, () => {})
 }
 
-/* ── 外壳首次入场：品牌 → 导航组（from start）→ 顶栏 ── */
+/* ── 外壳首次入场：顶栏（含品牌） → 功能列 → 模块列 → 标签行 → 底部栏 ── */
 export function playShellEntrance(frame: HTMLElement) {
   if (skipMotion()) {
     frame.classList.add('is-entrance-ready')
     return
   }
-  const brand = frame.querySelectorAll('.rail-brand')
-  const groups = frame.querySelectorAll('.nav-group')
+  const features = frame.querySelectorAll('.fnav-feature')
+  const modules = frame.querySelectorAll('.fnav-modules-head, .fnav-section-title, .fnav-module')
+  const tabsRow = frame.querySelectorAll('.tabbar')
+  const bars = frame.querySelectorAll('.mbar')
   const top = frame.querySelectorAll('.topbar > *')
+  const all = [...features, ...modules, ...tabsRow, ...bars, ...top]
   const tl = gsap.timeline({ paused: true })
-  tl.set([...brand, ...groups, ...top], { opacity: 0, y: 8 })
+  tl.set(all, { opacity: 0, y: 8 })
   tl.add(() => frame.classList.add('is-entrance-ready'))
-  tl.to(brand, { opacity: 1, y: 0, duration: 0.6, ease: EASE.reveal }, 0)
-  tl.to(groups, { opacity: 1, y: 0, duration: 0.6, ease: EASE.reveal, stagger: { each: 0.06, from: 'start' } }, 0.08)
-  tl.to(top, { opacity: 1, y: 0, duration: 0.5, ease: EASE.reveal, stagger: 0.04 }, 0.14)
-  tl.add(() => gsap.set([...brand, ...groups, ...top], { clearProps: 'transform' }))
+  tl.to(top, { opacity: 1, y: 0, duration: 0.5, ease: EASE.reveal, stagger: 0.04 }, 0)
+  tl.to(features, { opacity: 1, y: 0, duration: 0.6, ease: EASE.reveal, stagger: { each: 0.05, from: 'start' } }, 0.06)
+  tl.to(modules, { opacity: 1, y: 0, duration: 0.5, ease: EASE.reveal, stagger: { each: 0.025, from: 'start' } }, 0.14)
+  tl.to(tabsRow, { opacity: 1, y: 0, duration: 0.5, ease: EASE.reveal }, 0.18)
+  tl.to(bars, { opacity: 1, y: 0, duration: 0.5, ease: EASE.reveal }, 0.26)
+  tl.add(() => gsap.set(all, { clearProps: 'transform' }))
   afterTwoFrames(() => tl.play(0))
+}
+
+/* ── 移动端视图切换：整页轻淡入（导 Conduct，克制不重） ── */
+export function viewEnter(el: HTMLElement) {
+  if (skipMotion()) return
+  gsap.fromTo(el, { opacity: 0.35, y: 6 }, { opacity: 1, y: 0, duration: 0.32, ease: EASE.glide, clearProps: 'opacity,transform' })
 }
 
 /* ── 滑动玻璃块：导航选中、分段滑块共用（transform 归 GSAP） ── */

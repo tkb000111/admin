@@ -6,9 +6,9 @@ import IconButton from '@/components/ui/IconButton.vue'
 import Avatar from '@/components/ui/Avatar.vue'
 import { currentUser } from '@/composables/auth'
 import { overlayEnter, overlayLeave } from '@/composables/motion'
+import { APP } from '@/data'
 
 const emit = defineEmits<{
-  (e: 'toggle-rail'): void
   (e: 'command'): void
   (e: 'appearance'): void
   (e: 'password'): void
@@ -21,9 +21,8 @@ const pop = ref<HTMLElement | null>(null)
 const menuOpen = ref(false)
 const pos = ref({ top: 0, right: 0 })
 
-const group = computed(() => route.meta.group as string | undefined)
+const feature = computed(() => route.meta.feature as string | undefined)
 const title = computed(() => route.meta.title as string | undefined)
-const isMac = /Mac|iPhone|iPad/.test(navigator.platform)
 
 async function openMenu() {
   const rect = chip.value?.getBoundingClientRect()
@@ -60,9 +59,10 @@ function onKey(event: KeyboardEvent) {
   }
 }
 
-function pick(action: 'appearance' | 'password' | 'logout') {
+function pick(action: 'command' | 'appearance' | 'password' | 'logout') {
   closeMenu()
-  if (action === 'appearance') emit('appearance')
+  if (action === 'command') emit('command')
+  else if (action === 'appearance') emit('appearance')
   else if (action === 'password') emit('password')
   else emit('logout')
 }
@@ -72,18 +72,20 @@ onBeforeUnmount(() => closeMenu())
 
 <template>
   <header class="topbar">
-    <IconButton name="sidebar" label="切换导航" @click="emit('toggle-rail')" />
+    <!-- 品牌（logo）：横跨全宽的顶栏最左 -->
+    <div class="brand-box" :title="`${APP.subtitle} · ${APP.version}`">
+      <span class="brand-mark" aria-hidden="true"><span class="brand-dot" /></span>
+      <span class="brand-name">{{ APP.shortName }}</span>
+    </div>
     <div class="crumbs" aria-label="当前位置">
-      <template v-if="group"><span>{{ group }}</span><Icon class="crumb-sep" name="chevronRight" :size="12" /></template>
+      <template v-if="feature"><span class="crumb-parent">{{ feature }}</span><Icon class="crumb-sep" name="chevronRight" :size="10" /></template>
       <span class="crumb-current">{{ title }}</span>
     </div>
     <div class="spacer" />
-    <button type="button" class="cmd-trigger m-pill" aria-label="搜索菜单" @click="emit('command')">
-      <Icon name="search" :size="15" />
-      <span class="cmd-text">搜索菜单</span>
-      <span class="kbd">{{ isMac ? '⌘' : 'Ctrl' }} K</span>
+    <button type="button" class="cmd-trigger m-pill" aria-label="搜索菜单" title="搜索菜单（⌘K）" @click="emit('command')">
+      <Icon name="search" :size="14" />
     </button>
-    <IconButton name="contrast" label="外观设置" @click="emit('appearance')" />
+    <IconButton class="appearance-toggle" name="contrast" label="外观设置" @click="emit('appearance')" />
     <button
       ref="chip"
       type="button"
@@ -92,12 +94,8 @@ onBeforeUnmount(() => closeMenu())
       :aria-expanded="menuOpen"
       @click="menuOpen ? closeMenu() : openMenu()"
     >
-      <Avatar :name="currentUser?.nickname" :size="32" />
-      <span class="user-meta">
-        <span class="user-name" style="display: block">{{ currentUser?.nickname }}</span>
-        <span class="user-role" style="display: block">{{ currentUser?.deptName || currentUser?.username }}</span>
-      </span>
-      <Icon name="chevronDown" :size="14" style="color: var(--ink-soft)" />
+      <Avatar :name="currentUser?.nickname" :size="22" />
+      <Icon name="chevronDown" :size="12" style="color: var(--ink-soft)" />
     </button>
 
     <Teleport to="body">
@@ -107,6 +105,7 @@ onBeforeUnmount(() => closeMenu())
             <div style="font-weight: 680">{{ currentUser?.nickname }}</div>
             <div class="soft" style="font-size: 12px">@{{ currentUser?.username }}<template v-if="currentUser?.deptName"> · {{ currentUser.deptName }}</template></div>
           </div>
+          <button type="button" class="menu-item" role="menuitem" @click="pick('command')"><Icon name="search" :size="16" />搜索菜单</button>
           <button type="button" class="menu-item" role="menuitem" @click="pick('password')"><Icon name="key" :size="16" />修改密码</button>
           <button type="button" class="menu-item" role="menuitem" @click="pick('appearance')"><Icon name="contrast" :size="16" />外观设置</button>
           <button type="button" class="menu-item is-danger" role="menuitem" @click="pick('logout')"><Icon name="logout" :size="16" />退出登录</button>

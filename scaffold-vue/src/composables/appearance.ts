@@ -1,17 +1,16 @@
 import { reactive, watch } from 'vue'
 
-/* 外观设置：主题（浅色 / 深色 / 跟随系统）、表格密度、导航轨折叠。持久化在本机浏览器。 */
+/* 外观设置：主题（浅色 / 深色 / 跟随系统）、表格密度。持久化在本机浏览器。 */
 export type ThemeMode = 'light' | 'dark' | 'auto'
 export type Density = 'comfy' | 'regular' | 'compact'
 
 export interface Appearance {
   theme: ThemeMode
   density: Density
-  railCollapsed: boolean
 }
 
 const STORAGE_KEY = 'scaffold.appearance'
-const DEFAULTS: Appearance = { theme: 'light', density: 'regular', railCollapsed: false }
+const DEFAULTS: Appearance = { theme: 'light', density: 'regular' }
 
 function load(): Appearance {
   try {
@@ -21,7 +20,6 @@ function load(): Appearance {
       return {
         theme: (['light', 'dark', 'auto'] as const).includes(saved.theme as ThemeMode) ? saved.theme as ThemeMode : DEFAULTS.theme,
         density: (['comfy', 'regular', 'compact'] as const).includes(saved.density as Density) ? saved.density as Density : DEFAULTS.density,
-        railCollapsed: Boolean(saved.railCollapsed),
       }
     }
   } catch { /* 存储不可用时使用默认值 */ }

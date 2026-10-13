@@ -34,6 +34,13 @@ const list = useListPage<OperRow, { keyword: string; result: string }>({
   query: { keyword: typeof route.query.keyword === 'string' ? route.query.keyword : '', result: '' },
 })
 
+// 页面被缓存后再次深链进入（如工作台泳道）时，重新应用地址里的筛选词
+watch(() => route.query.keyword, (keyword) => {
+  if (typeof keyword !== 'string' || keyword === list.query.keyword) return
+  list.query.keyword = keyword
+  list.search()
+})
+
 const columns: Column[] = [
   { key: 'module', title: '操作', minWidth: 180 },
   { key: 'operName', title: '操作人' },
