@@ -76,12 +76,24 @@ VITE_API_PROXY_TARGET=http://localhost:18085 npm run dev
 
 后端访问 `http://localhost:<开发端口>`，前端访问 `http://localhost:5173`。devtools 仅在开发模式生效，打成 jar 运行（含 `./启动.sh` 与桌面版）时自动关闭。发布前仍按上方正式流程打包并跑测试。
 
+手机 / 局域网联调：`VITE_API_PROXY_TARGET=http://localhost:18085 npm run dev:lan`（前端监听全网卡），同一 Wi-Fi 下设备访问 `http://<本机局域网IP>:5173`；接口仍由 dev server 统一代理，后端无需额外对局域网开放。
+
 ## 新业务模块
+
+往基座里加东西有两种姿势，走**完全相同的登记链路**（菜单表一条数据 + `src/composables/auth.ts` 的 `PAGE_MAP` 一条登记 + 权限码），区别只是插在菜单树的哪一层；导航功能列、标签缓存、命令面板与权限显隐自动生效，外壳代码零改动。
+
+**方式 A：插入独立功能**（一个新的业务系统，与「后台管理」平级）
+
+1. 在菜单管理页（或 SQL）插一个顶级目录（`dir` 类型），配图标与排序。
+2. 把该目录授权给相应角色（`sys_role_menu`）——未授权的角色在功能列里看不到它。
+3. 其下按方式 B 挂模块，其余链路完全一致。
+
+**方式 B：插入模块**（挂进某个已有功能）
 
 1. 先设计业务表与中文字段含义；默认包含 `create_by`、`update_by`、`create_time`、`update_time` 四个审计字段。
 2. 复用 `scaffold-common` 的返回、分页与异常，以及 `scaffold-framework` 的权限、数据权限、操作日志能力。
 3. 前端列表复用 `ListPage`、`useListPage` / `useTreeListPage`；表单复用 `FormDialog`、`Field` 和现有控件，操作复用 `PermissionButton`。
-4. 在 `src/api` 接入统一 HTTP 客户端，在 `src/composables/auth.ts` 的 `COMPONENT_MAP` 注册页面，再添加菜单和按钮权限。
+4. 在 `src/api` 接入统一 HTTP 客户端，在 `src/composables/auth.ts` 的 `PAGE_MAP` 登记页面，再添加菜单和按钮权限。
 5. 按角色配置菜单和数据范围，验证低权限账号的真实接口拒绝行为、查询、分页、导出及表单校验。
 6. 同步项目地图、相关接口说明和更新日志。
 

@@ -24,9 +24,9 @@ npm run build
 | `src/composables/auth.ts` | 当前用户、权限、动态菜单与会话版本 |
 | `src/components/ui` | 按钮、输入、下拉、表格、弹窗、抽屉、提示等基础控件 |
 | `src/components/business` | ListPage、SearchForm、FormDialog、PermissionButton 及字典、部门、用户选择 |
-| `src/components/layout` | 外壳、侧栏、顶栏、命令搜索、外观与密码弹窗 |
+| `src/components/layout` | 外壳（双列导航、标签行、移动底部栏）、顶栏、命令搜索、外观与密码弹窗 |
 | `src/composables` | 列表、字典 / 部门缓存、外观、动效、焦点与确认框 |
-| `src/styles` | 令牌、基础、材质、控件、外壳、页面六层样式 |
+| `src/styles` | 令牌、基础、材质、控件、仪器、外壳、页面七层样式 |
 | `src/views` | 登录、工作台、10 个管理页、无权限与未匹配页面 |
 | `scripts/session-regression.py` | 真实浏览器会话、路由竞态与低权限回归 |
 

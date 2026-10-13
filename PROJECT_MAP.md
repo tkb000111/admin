@@ -12,7 +12,7 @@
 - Maven 模块：`scaffold-common`、`scaffold-framework`、`scaffold-system`、`scaffold-generator`、`scaffold-admin`。
 - 包名前缀：`com.scaffold`；启动类：`scaffold-system/scaffold-admin/src/main/java/com/scaffold/admin/ScaffoldAdminApplication.java`。
 - 配置：`scaffold-system/scaffold-admin/src/main/resources/application.yml`、`application-dev.yml`；前端代理：`scaffold-vue/vite.config.ts`。
-- 数据库初始化：`scaffold-system/sql/V1__init_schema.sql`、`V2__seed_data.sql`；开发工具：`scaffold-admin/src/main/java/com/scaffold/admin/util/DbInit.java`。
+- 数据库初始化：`scaffold-system/sql/V1__init_schema.sql`、`V2__seed_data.sql`、`V3__nav_upgrade.sql`（导航层级迁移）、`V4__manual_menu.sql`（使用手册菜单，均幂等可重跑）；开发工具：`scaffold-admin/src/main/java/com/scaffold/admin/util/DbInit.java`。
 - 入口规范：`README.md`、`AGENTS.md`、`DESIGN.md`；建筑与工作流已移除。
 
 ## 二、业务术语词典
@@ -46,12 +46,13 @@
 | 前端功能 | 路由 | 页面文件 | API 文件 / 后端模块 | 来源 |
 | --- | --- | --- | --- | --- |
 | 登录（全幅画布、神经网络背景、时钟、服务健康） | `/login` | `views/Login.vue` + `components/NeuralNet.vue` | `api/auth.ts`、`portal.ts` 的 `health`；认证 | 已确认 |
+| 使用手册（权限鱼骨 · 原位展开真实网络） | `/manual` | `views/manual/Manual.vue` | `api/system.ts`（permissions/graph、depts/tree、posts 计数）；系统管理 | 已确认 |
 | 工作台（主次布局 + 会话首次开场 + 模块网络卡） | `/dashboard` | `views/Dashboard.vue` | `api/portal.ts`；工作台；有日志权限时加载当日泳道 | 已确认 |
 | 用户（列表 / 看板） | `/system/user` | `views/system/Users.vue` | `api/system.ts`；系统管理 | 已确认 |
 | 角色（列表 / 权限矩阵 / 溯源·图谱舞台） | `/system/role` | `views/system/Roles.vue` + `components/business/PermissionTrace.vue` | 同上 + `permissions/graph` | 已确认 |
 | 菜单（表格 / 导航星系·图谱舞台 + 侧栏预览） | `/system/menu` | `views/system/Menus.vue` + `components/business/MenuStarMap.vue` | 同上 | 已确认 |
 | 部门（组织画布 / 表格，选中路径脉冲） | `/system/dept` | `views/system/Depts.vue` | 同上 | 已确认 |
-| 岗位（列表 / 阶梯·图谱舞台） | `/system/post` | `views/system/Posts.vue` + `components/business/PostLadder.vue` | 同上；阶梯成员经 `users?postId=` | 已确认 |
+| 岗位（列表 / 矩阵·按岗位看人） | `/system/post` | `views/system/Posts.vue` + `components/business/PostMatrix.vue` | 同上；矩阵成员经 `users?postId=` | 已确认 |
 | 字典（表格 / 样本册） | `/system/dict` | `views/system/Dict.vue` + `components/business/DictSwatchbook.vue` | 同上 | 已确认 |
 | 参数（设置面板 / 表格） | `/system/config` | `views/system/Configs.vue` | 同上 | 已确认 |
 | 操作日志（横带：概览 / 趋势或泳道 / 明细，抽屉级联） | `/monitor/oper-log` | `views/monitor/OperLog.vue` | `api/system.ts`；日志与统计 | 已确认 |
@@ -62,20 +63,23 @@
 | 公共能力 | 文件入口 | 用途 |
 | --- | --- | --- |
 | 列表模板与数据状态 | `components/business/ListPage.vue`、`composables/list.ts` | 查询、重置、分页、导出、勾选、底部批量浮条及树列表；`altView` + `#alt` 换成画布 / 看板 / 矩阵。取数与导出取自 `auth.ts` 的 `PAGE_MAP`，页面只写查询字段与列；导航意图（悬停 / 按下）时预热代码分块并发起首次取数，页面挂载时复用该在途请求 |
-| 版式组件 | `components/business/OrgCanvas.vue`、`BoardView.vue`、`PermissionMatrix.vue`、`PostLadder.vue`、`PermissionTrace.vue`、`MenuStarMap.vue`、`DictSwatchbook.vue`、`GeneratorPipeline.vue`、`composables/view.ts` | 组织画布、看板分列（拖拽 + 键盘移动）、角色权限矩阵、岗位阶梯、权限溯源（三层下钻）、导航星系（三层下钻）、字典样本册、生成流水线、按页面记忆视图 |
+| 版式组件 | `components/business/OrgCanvas.vue`、`BoardView.vue`、`PermissionMatrix.vue`、`PostMatrix.vue`、`PermissionTrace.vue`、`MenuStarMap.vue`、`DictSwatchbook.vue`、`GeneratorPipeline.vue`、`composables/view.ts` | 组织画布、看板分列（拖拽 + 键盘移动）、角色权限矩阵、岗位矩阵（按需取人、缓存）、权限溯源（三层下钻）、导航星系（三层下钻）、字典样本册、生成流水线、按页面记忆视图 |
 | 图谱与问答 | `components/charts/RelationGraph.vue`、`composables/neural.ts`、`components/business/InsightPanel.vue`、`AskDock.vue`、`composables/ask.ts`、`composables/viewport.ts`、`components/NeuralNet.vue` | 通用关系图（弹簧布局变形、脉冲、扇形触须；`variant="stage"` 为珍珠玻璃图谱舞台）、舞台 Canvas 绘制件（珍珠球、玻璃刻度表盘、连线与脉冲、背景网络、轨道、台阶光柱）、分析栏、问答坞、本地规则问答引擎、共享视口平移缩放、登录神经网络背景 |
 | 仪器化组件 | `components/ui/Metric.vue`、`Odometer.vue`、`SectionLabel.vue`、`SpecPlate.vue`、`DeltaPill.vue`、`Ruler.vue`、`HoverCard.vue` | 显示级读数、逐位滚动、编号眉标、规格铭牌、环比、刻度尺、悬停名片 |
 | 图表 | `components/charts/TrendChart.vue`、`BarChart.vue`、`TickRing.vue`、`Swimlane.vue` | 自绘 SVG：形变折线与准星（稀疏数据茎叶点）、柱状、刻度环、时间轴泳道（默认聚焦有操作时段）；工作台数据权限为页内占比条 |
 | 表单与引用选项 | `components/business/FormDialog.vue`、`DictSelect.vue`、`DeptTree.vue`、`DeptSelect.vue`、`UserSelect.vue` | 统一表单、字典、部门、用户选择 |
 | 权限 | `components/business/PermissionButton.vue`、`directives/permission.ts` | 以当前用户权限控制操作显示 |
-| 外壳 | `components/layout/AppShell.vue`、`Sidebar.vue`、`Topbar.vue`、`CommandPalette.vue` | 导航、移动侧栏、滚动凝结顶栏、命令面板（最近访问 / 页面 / 用户 / 动作）与账号操作 |
-| 请求与会话 | `api/http.ts`、`api/session.ts`、`composables/auth.ts`、`router/index.ts` | 响应解包、存储、401 处理、动态路由与会话清理 |
+| 外壳 | `components/layout/AppShell.vue`、`FeatureNav.vue`、`TabBar.vue`、`MobileBar.vue`、`Topbar.vue`、`CommandPalette.vue` | 顶栏拉通占满一行（logo 在最左，32px 标准行高、层级面包屑；≤820 精简为 logo 块 + 居中当前页标题 + 头像，⌘K 收进导航视图顶部），下方分「双列导航 | 工作区」：双列导航（大屏常驻左栏，126+150px；≤820 收进「导航」视图两列并排）、标签行（双端同一组件，32px）、底部 4 格操作栏（≤820：导航｜界面｜预留｜预留，整页切换两视图无抽屉）、滚动凝结顶栏、命令面板与账号操作。内容区 = RouterView → Transition → KeepAlive 官方嵌套；路由组件经 `auth.ts` 的 `pageShell(路由名)` 包装——外层组件名 = 路由名 = KeepAlive 缓存名，页面文件零改动即获得缓存 |
+| 标签与导航归一化 | `composables/tabs.ts`、`composables/featureNav.ts`、`composables/shellView.ts` | 标签状态中心：`router.afterEach` 自动登记（任何方式进入带 `meta.componentKey` 的路由都生成/激活标签）、KeepAlive include 派生（key=路由名）、localStorage 持久化（`scaffold.tabs`）与登录恢复（按当前账号菜单校验，失效丢弃）、刷新 = bust 渲染键 + 临时踢出缓存；菜单树归一化：任意深度树 →「功能 → 小节? → 模块」，新旧两种库形状通吃；移动视图状态：默认「界面」，路由跳转（含深链）自动带回界面视图，回大屏复位 |
+| 请求与会话 | `api/http.ts`、`api/session.ts`、`composables/auth.ts`、`router/index.ts` | 响应解包、存储、401 处理、动态路由（meta 带 feature/section/componentKey）与会话清理 |
 | 外观与动效 | `composables/appearance.ts`、`motion.ts`、`focus.ts` | 主题、密度、GSAP、浮层层级与焦点 |
 | 样式 | `styles/tokens.css`、`base.css`、`materials.css`、`components.css`、`instruments.css`、`layout.css`、`pages.css` | 顺序加载的七层样式 |
 
 ## 四、场景剧本
 
-**登录与切换账号**：`Login.vue` → `authApi.login` → `AuthController.login` → `AuthService.login` → `AuthMapper` 校验账号、写登录日志 → `JwtService` 生成独立 token、`TokenStore` 写 Redis → `/auth/me` 取角色和权限 → `/auth/routes` 取菜单 → `router/index.ts` 注册页面；退出同步清除会话、菜单、路由和引用缓存，旧请求以会话版本判定是否仍可写回。
+**登录与切换账号**：`Login.vue` → `authApi.login` → `AuthController.login` → `AuthService.login` → `AuthMapper` 校验账号、写登录日志 → `JwtService` 生成独立 token、`TokenStore` 写 Redis → `/auth/me` 取角色和权限 → `/auth/routes` 取菜单 → `router/index.ts` 注册页面并打开第一个功能的第一个模块（上次标签若有效则恢复）；退出同步清除会话、菜单、路由和引用缓存，旧请求以会话版本判定是否仍可写回。
+
+**导航与标签**：`featureNav.ts` 把菜单树归一化为「功能 → 小节? → 模块」→ `FeatureNav` 双列渲染：点功能=浏览（只换模块列，不冲掉已打开界面）、点模块=打开（`tabs.open` 登记标签并激活）；`router.afterEach` 兜底登记任何方式的进入；`TabBar` 切换/关闭/刷新（刷新=踢出缓存重挂载）；标签清单持久化 localStorage，登录后按当前菜单校验恢复；≤820 整页在「导航 / 界面」两视图切换，路由跳转自动带回界面视图。
 
 **新增用户**：`Users.vue` → `/system/users/options` 取引用选项 → `FormDialog` 校验 → `systemApi.users.create` → `SystemManagementController.createUser` → `SystemManagementService.createUser` → 用户表与角色、岗位关联表 → 列表重载；操作日志由公共切面记录。
 
