@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import RelationGraph, { type GraphLink, type GraphNode } from '@/components/charts/RelationGraph.vue'
+import RelationGraph, { type ArchData, type GraphNode } from '@/components/charts/RelationGraph.vue'
+import type { ArchEdge, ArchLayer, ArchSpine } from '@/composables/neural'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import StatusTag from '@/components/ui/StatusTag.vue'
 import PermissionButton from './PermissionButton.vue'
@@ -11,9 +12,11 @@ import { toastError } from '@/composables/toast'
 import { hasPermission } from '@/directives/permission'
 
 /* ============================================================
-   岗位阶梯（图谱舞台）：岗位按 sort 沿对角线自左下向右上等距铺满舞台，
-   每级是带分类色上沿的珍珠玻璃台面，台面下淡色光柱垂到刻度地平线；脊线脉冲逐级向上传递。
-   选中岗位 → 在岗成员以带标签胶囊触须扇形长到左上空域；右上信息卡给出编辑与跳转。
+   岗位网络（架构图）：岗位按 sort 排成一条横向的层序列，读作大模型的
+   网络架构——第一级是输入层，末级是输出层，中间是隐层。
+   每层的神经元数量固定，人数不生成节点、只决定「点亮到第几颗」，
+   因此渲染图元数只随岗位数变化，与在岗人数多少无关。
+   选中某层时，该层高亮、在岗人员排在该层上方视觉上喂进这一层。
    ============================================================ */
 export interface LadderPost { id: number; postName: string; postCode: string; sort: number; status: number; userCount: number }
 
@@ -57,65 +60,152 @@ async function loadMembers(id: number) {
 watch(activeId, (id) => { if (id !== null) loadMembers(id) }, { immediate: true })
 
 const catOf = (i: number) => (i % 5) + 1
-const MEMBER_CAP = 12
 
-const scene = computed<{ nodes: GraphNode[]; links: GraphLink[] }>(() => {
+/** 布局常量：层柱宽度与每层神经元数都是固定的，不随数据变化 */
+const PLATE = 52
+const NEURONS = 5
+const MEMBER_CAP = 6
+
+interface Geom {
+  w: number
+  h: number
+  padX: number
+  half: number
+  layers: Array<ArchLayer & { id: string }>
+  activeIdx: number
+}
+
+const geom = computed<Geom | null>(() => {
   const { w, h } = size.value
   const list = steps.value
-  if (!w || !h || !list.length) return { nodes: [], links: [] }
-  const nodes: GraphNode[] = []
-  const links: GraphLink[] = []
   const n = list.length
-  // 台阶沿对角线铺满：左下 → 右上；宽度随数量收缩，绝不出界
-  const pad = Math.max(28, w * 0.03)
-  const width = Math.max(92, Math.min(150, (w - pad * 2) / Math.max(n, 1) - 12))
-  const x0 = pad + width / 2
-  const x1 = w - pad - width / 2
-  const y0 = h - 120
-  const y1 = Math.max(150, h * 0.28)
-  list.forEach((p, i) => {
-    const k = n > 1 ? i / (n - 1) : 0.5
-    const id = `post:${p.id}`
-    nodes.push({
-      id, kind: 'slab', x: n > 1 ? x0 + (x1 - x0) * k : (x0 + x1) / 2, y: y0 + (y1 - y0) * k,
-      size: width, rank: `第 ${i + 1} 级`, label: p.postName, sub: p.postCode, count: p.userCount,
-      cat: catOf(i), tone: p.status !== 1 ? 'off' : undefined, delay: 0.1 + i * 0.12,
-    })
-    if (i > 0) links.push({ a: `post:${list[i - 1].id}`, b: id, flow: 'forward', shape: 'h', cat: catOf(i) })
-  })
-  const post = active.value
-  if (!post) return { nodes, links }
-  const root = `post:${post.id}`
-  const cat = catOf(list.indexOf(post))
-  const shown = members.value.slice(0, MEMBER_CAP)
-  const more = members.value.length - shown.length
-  // 成员排在左上空域（信息卡右侧）：最多两列，从选中台阶触须长出
-  const colX = [Math.max(300, w * 0.25), Math.max(300, w * 0.25) + 220]
-  const top = 76
-  const bottom = Math.min(h * 0.5, h - 260)
-  const perCol = Math.max(3, Math.floor((bottom - top) / 50) + 1)
-  const items = [...shown.map(u => ({ id: `u:${u.id}`, label: u.nickname, sub: [u.deptName, u.username].filter(Boolean).join(' · '), interactive: Boolean(usersPath.value) }))]
-  if (more > 0) items.push({ id: 'more', label: `还有 ${more} 人`, sub: '在用户页查看全部', interactive: false })
-  if (!items.length && !membersLoading.value) items.push({ id: 'empty', label: canListUsers ? '暂无在岗人员' : `共 ${post.userCount} 人在岗`, sub: canListUsers ? '可在用户管理中为用户指定岗位' : '无用户查询权限，仅显示人数', interactive: false })
-  items.forEach((it, i) => {
-    const c = Math.floor(i / perCol)
-    const r = i % perCol
-    const inCol = Math.min(perCol, items.length - c * perCol)
-    const gap = Math.min(50, (bottom - top) / Math.max(inCol - 1, 1))
-    const y = top + (bottom - top) / 2 - (gap * (inCol - 1)) / 2 + r * gap
-    nodes.push({
-      id: it.id, kind: 'item', align: 'left', x: colX[Math.min(c, 1)], y,
-      label: it.label, sub: it.sub, icon: it.id.startsWith('u:') ? 'user' : undefined, cat: it.id.startsWith('u:') ? cat : undefined,
-      tone: it.id.startsWith('u:') ? undefined : 'off', interactive: it.interactive, from: root, delay: 0.12 + i * 0.08,
-    })
-    if (it.id.startsWith('u:')) links.push({ a: root, b: it.id, flow: 'forward', cat })
-  })
-  return { nodes, links }
+  if (!w || !h || !n) return null
+  // 两侧留出层标签的宽度，否则最外两层的标签会被画布裁掉
+const LABEL_HALF = 62
+const padX = Math.max(LABEL_HALF, w * 0.04)
+  const padTop = 108    // 上方让给在岗人员行
+  const padBottom = 104 // 下方留给层标签
+  const usable = Math.max(140, h - padTop - padBottom)
+  const cy = padTop + usable / 2
+  const half = Math.max(66, Math.min(148, usable / 2 - 8))
+  const step = n > 1 ? (w - padX * 2) / (n - 1) : 0
+  const maxCount = Math.max(1, ...list.map(p => p.userCount))
+  const activeIdx = active.value ? list.findIndex(p => p.id === active.value!.id) : -1
+  const layers = list.map<ArchLayer & { id: string }>((p, i) => ({
+    id: `post:${p.id}`,
+    x: n > 1 ? padX + step * i : w / 2,
+    y: cy,
+    h: half,
+    // 人数只归一化成点亮强度，不产生任何新图元
+    intensity: p.userCount / maxCount,
+    cat: catOf(i),
+    active: i === activeIdx,
+    n: NEURONS,
+    dim: activeIdx < 0 ? 1 : i === activeIdx ? 1 : Math.abs(i - activeIdx) === 1 ? 0.72 : 0.4,
+  }))
+  return { w, h, padX, half, layers, activeIdx }
 })
 
-const highlight = computed(() => {
-  if (!active.value) return null
-  return scene.value.nodes.filter(n => !n.id.startsWith('post:') || n.id === `post:${active.value!.id}`).map(n => n.id)
+/** 神经元的 y 坐标：与 paintArchNeurons 的排布一致 */
+function neuronY(layer: ArchLayer, index: number) {
+  return layer.y - layer.h + ((layer.h * 2) / (layer.n + 1)) * (index + 1)
+}
+
+const arch = computed<ArchData | null>(() => {
+  const g = geom.value
+  if (!g) return null
+  const { layers } = g
+  const edges: ArchEdge[] = []
+  // 相邻层全连接，作为极淡的肌理；选中层附近才提亮
+  for (let i = 0; i < layers.length - 1; i += 1) {
+    const a = layers[i]
+    const b = layers[i + 1]
+    const near = a.active || b.active ? 0.11 : 0.055
+    const dim = Math.min(a.dim, b.dim)
+    for (let u = 0; u < a.n; u += 1) {
+      for (let v = 0; v < b.n; v += 1) {
+        edges.push({ x1: a.x, y1: neuronY(a, u), x2: b.x, y2: neuronY(b, v), cat: b.cat, w: near * dim })
+      }
+    }
+  }
+  // 主干：逐层穿过「最后一颗被点亮的神经元」，网络越满信号爬得越高
+  const spine: ArchSpine = layers.map((l) => {
+    const idx = Math.max(0, Math.min(l.n - 1, Math.round(l.intensity * l.n - 0.5)))
+    return { x: l.x, y: neuronY(l, idx) }
+  })
+  const toneIdx = g.activeIdx >= 0 ? layers[g.activeIdx].cat : layers[0].cat
+  return { layers, edges, spine, plate: PLATE, cat: toneIdx }
+})
+
+const rankOf = (i: number, n: number) => (n === 1 ? '单层' : i === 0 ? '输入层' : i === n - 1 ? '输出层' : `隐层 ${i}`)
+
+const scene = computed<{ nodes: GraphNode[] }>(() => {
+  const g = geom.value
+  const list = steps.value
+  if (!g) return { nodes: [] }
+  const nodes: GraphNode[] = []
+  const n = g.layers.length
+  // 每层的标签块：等级、岗位名、编码、人数
+  g.layers.forEach((l, i) => {
+    const p = list[i]
+    nodes.push({
+      id: l.id,
+      kind: 'arch',
+      x: l.x,
+      y: l.y + l.h + 44,
+      label: p.postName,
+      sub: p.postCode,
+      count: p.userCount,
+      rank: rankOf(i, n),
+      cat: l.cat,
+      tone: p.status !== 1 ? 'off' : undefined,
+    })
+  })
+  // 选中层的在岗人员：横排在该层上方，读作喂进这一层的信号
+  const post = active.value
+  if (post && g.activeIdx >= 0) {
+    const layer = g.layers[g.activeIdx]
+    const shown = members.value.slice(0, MEMBER_CAP)
+    const more = members.value.length - shown.length
+    const items = shown.map(u => ({
+      id: `u:${u.id}`,
+      label: u.nickname,
+      sub: [u.deptName, u.username].filter(Boolean).join(' · '),
+      interactive: Boolean(usersPath.value),
+    }))
+    if (more > 0) items.push({ id: 'more', label: `还有 ${more} 人`, sub: '在用户页查看全部', interactive: false })
+    if (!items.length && !membersLoading.value) {
+      items.push({
+        id: 'empty',
+        label: canListUsers ? '暂无在岗人员' : `共 ${post.userCount} 人在岗`,
+        sub: canListUsers ? '可在用户管理中为用户指定岗位' : '无用户查询权限，仅显示人数',
+        interactive: false,
+      })
+    }
+    const room = g.w - g.padX * 2
+    const spacing = Math.min(126, Math.max(96, room / Math.max(items.length, 1)))
+    const rowY = layer.y - layer.h - 42
+    // 胶囊比层标签宽，整行平移进画布而不是逐个夹取，否则间距会被压塌
+    const MEMBER_EDGE = 100
+    const rowW = spacing * (items.length - 1)
+    const origin = Math.max(MEMBER_EDGE, Math.min(g.w - MEMBER_EDGE - rowW, layer.x - rowW / 2))
+    items.forEach((it, i) => {
+      nodes.push({
+        id: it.id,
+        kind: 'item',
+        align: 'center',
+        x: origin + i * spacing,
+        y: rowY,
+        label: it.label,
+        sub: it.sub,
+        interactive: it.interactive,
+        icon: it.id.startsWith('u:') ? 'user' : undefined,
+        cat: it.id.startsWith('u:') ? layer.cat : undefined,
+        tone: it.id.startsWith('u:') ? undefined : 'off',
+      })
+    })
+  }
+  return { nodes }
 })
 
 function onSelect(node: GraphNode) {
@@ -123,6 +213,8 @@ function onSelect(node: GraphNode) {
   const user = members.value.find(u => `u:${u.id}` === node.id)
   if (user && usersPath.value) router.push({ path: usersPath.value, query: { keyword: user.username } })
 }
+
+const stageWidth = computed(() => Math.max(720, steps.value.length * 124 + 88))
 </script>
 
 <template>
@@ -130,34 +222,31 @@ function onSelect(node: GraphNode) {
     <RelationGraph
       v-model:size="size"
       class="ladder-stage"
-      :style="{ minWidth: `${steps.length * 112 + 72}px` }"
+      :style="{ minWidth: `${stageWidth}px` }"
+      :arch="arch"
       variant="stage"
-      label="岗位能量阶梯"
+      label="岗位网络架构"
       :nodes="scene.nodes"
-      :links="scene.links"
       :active-id="active ? `post:${active.id}` : null"
-      :highlight="highlight"
       @select="onSelect"
       @back="activeId = null"
     >
       <template v-if="active" #tl>
         <section class="ladder-card m-float" :class="`cat-${(steps.indexOf(active) % 5) + 1}`" aria-live="polite">
-          <div class="ladder-card-head">
-            <span class="ladder-card-rank">第 {{ steps.indexOf(active) + 1 }} 级 · 共 {{ steps.length }} 级</span>
-            <StatusTag :status="active.status" />
-          </div>
+          <span class="ladder-card-rank">{{ rankOf(steps.indexOf(active), steps.length) }} · 第 {{ steps.indexOf(active) + 1 }} 级 / 共 {{ steps.length }} 级</span>
           <h3>{{ active.postName }}</h3>
           <span class="code-chip">{{ active.postCode }}</span>
           <dl>
             <div><dt>在岗</dt><dd class="tnum">{{ active.userCount }}<small>人</small></dd></div>
             <div><dt>排序</dt><dd class="tnum">{{ active.sort }}</dd></div>
           </dl>
+          <StatusTag :status="active.status" />
           <div class="ladder-card-actions">
             <PermissionButton perm="system:post:edit" variant="secondary" size="sm" icon="edit" @click="emit('edit', active)">编辑岗位</PermissionButton>
           </div>
         </section>
       </template>
-      <p v-if="steps.length" class="trace-hint">点击台阶查看在岗人员 · 方向键切换</p>
+      <p v-if="steps.length" class="trace-hint">点击层查看在岗人员 · 方向键切换</p>
     </RelationGraph>
     <EmptyState v-if="!loading && !steps.length" class="ladder-empty" title="还没有岗位" icon="post" />
   </div>

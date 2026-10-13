@@ -365,3 +365,183 @@ export function paintHorizon(ctx: CanvasRenderingContext2D, y: number, x0: numbe
   }
   ctx.restore()
 }
+
+/* ============================================================
+   架构图：横排的「层柱 + 神经元」，语汇与浅色图谱一致但构图反过来——
+   主体不再是散点，而是层。层内神经元数量固定，人数只调「点亮到第几颗」，
+   所以渲染图元数只随岗位数变化，与在岗人数多少无关。
+   静态件（层柱 / 神经元 / 连线 / 主干）与动态件（沿主干流动的脉冲）分开，
+   前者可整体预渲染到离屏画布，每帧只贴图 + 画几枚脉冲。
+   ============================================================ */
+
+export interface ArchLayer {
+  /** 层柱中心 */
+  x: number
+  /** 层柱中线 */
+  y: number
+  /** 层柱半高 */
+  h: number
+  /** 在岗人数归一化到 0–1 的强度 */
+  intensity: number
+  /** 分类色下标 */
+  cat: number
+  /** 是否为当前选中层 */
+  active: boolean
+  /** 层内神经元数（固定） */
+  n: number
+  /** 非选中层的整体压暗系数 0–1 */
+  dim: number
+}
+
+export interface ArchEdge { x1: number; y1: number; x2: number; y2: number; cat: number; w: number }
+
+export type ArchSpine = Array<{ x: number; y: number }>
+
+function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  ctx.beginPath()
+  if (typeof ctx.roundRect === 'function') { ctx.roundRect(x, y, w, h, r); return }
+  ctx.moveTo(x + r, y)
+  ctx.arcTo(x + w, y, x + w, y + h, r)
+  ctx.arcTo(x + w, y + h, x, y + h, r)
+  ctx.arcTo(x, y + h, x, y, r)
+  ctx.arcTo(x, y, x + w, y, r)
+  ctx.closePath()
+}
+
+/** 层柱底板：淡分类色打底 + 纸色高光 + 发丝描边。刻意不用玻璃——画布每帧重绘时模糊无法缓存 */
+export function paintArchPlate(ctx: CanvasRenderingContext2D, layer: ArchLayer, p: StagePalette, width = 52) {
+  const top = layer.y - layer.h
+  const bot = layer.y + layer.h
+  const c = p.cat[layer.cat] ?? p.ink
+  ctx.save()
+  ctx.globalAlpha = layer.dim
+  roundRect(ctx, layer.x - width / 2, top, width, bot - top, 14)
+  // 极淡分类色打底，让层柱在浅底上立得住
+  ctx.fillStyle = rgba(c, layer.active ? 0.1 : 0.06)
+  ctx.fill()
+  const g = ctx.createLinearGradient(0, top, 0, bot)
+  g.addColorStop(0, rgba(p.paper, 0.7))
+  g.addColorStop(1, rgba(p.paper, 0.14))
+  ctx.fillStyle = g
+  ctx.fill()
+  ctx.lineWidth = 1
+  ctx.strokeStyle = rgba(c, layer.active ? 0.5 : 0.24)
+  ctx.stroke()
+  // 上下接口端头：读作层与层的接驳
+  ctx.fillStyle = rgba(c, layer.active ? 0.72 : 0.3)
+  roundRect(ctx, layer.x - width / 2, top - 2.5, width, 2.5, 1.2)
+  ctx.fill()
+  roundRect(ctx, layer.x - width / 2, bot, width, 2.5, 1.2)
+  ctx.fill()
+  ctx.restore()
+}
+
+/** 神经元柱：强度决定「点亮到第几颗」，边界处连续过渡（与刻度环同一套读法） */
+export function paintArchNeurons(ctx: CanvasRenderingContext2D, layer: ArchLayer, p: StagePalette) {
+  const c = p.cat[layer.cat] ?? p.ink
+  const top = layer.y - layer.h
+  const step = (layer.h * 2) / (layer.n + 1)
+  const lit = layer.intensity * layer.n
+  ctx.save()
+  ctx.globalAlpha = layer.dim
+  for (let i = 0; i < layer.n; i++) {
+    const y = top + step * (i + 1)
+    const fill = Math.max(0, Math.min(1, lit - i))
+    const a = 0.1 + fill * 0.9
+    const r = 4.2 + fill * 2.6
+    if (layer.active) {
+      ctx.fillStyle = rgba(c, 0.13)
+      ctx.beginPath(); ctx.arc(layer.x, y, r + 7, 0, TAU); ctx.fill()
+    }
+    ctx.fillStyle = rgba(c, a)
+    ctx.beginPath(); ctx.arc(layer.x, y, r, 0, TAU); ctx.fill()
+    ctx.lineWidth = 1.3
+    ctx.strokeStyle = rgba(p.paper, 0.96)
+    ctx.stroke()
+  }
+  ctx.restore()
+}
+
+/** 层间连线：相邻层全连接，作极淡的肌理，不喧宾夺主 */
+export function paintArchWeb(ctx: CanvasRenderingContext2D, edges: ArchEdge[], p: StagePalette) {
+  ctx.save()
+  ctx.lineWidth = 1
+  for (const e of edges) {
+    ctx.strokeStyle = rgba(p.cat[e.cat] ?? p.ink, e.w)
+    ctx.beginPath()
+    ctx.moveTo(e.x1, e.y1)
+    ctx.lineTo(e.x2, e.y2)
+    ctx.stroke()
+  }
+  ctx.restore()
+}
+
+/** 主干经过每个神经元，但逐层用中点二次曲线过渡——逐层跳变时读作信号起伏，而不是锯齿 */
+function spineMid(a: { x: number; y: number }, b: { x: number; y: number }) {
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
+}
+
+/** 与 paintArchSpine 同构地取点，脉冲才会贴着线走 */
+export function archSpineAt(pts: ArchSpine, u: number) {
+  const n = pts.length
+  if (n < 2) return pts[0] ?? { x: 0, y: 0 }
+  const f = Math.max(0, Math.min(1, u)) * n
+  const i = Math.min(n - 1, Math.floor(f))
+  const t = f - i
+  if (i === 0) {
+    const b = spineMid(pts[0], pts[1])
+    return { x: pts[0].x + (b.x - pts[0].x) * t, y: pts[0].y + (b.y - pts[0].y) * t }
+  }
+  if (i === n - 1) {
+    const a = spineMid(pts[n - 2], pts[n - 1])
+    return { x: a.x + (pts[n - 1].x - a.x) * t, y: a.y + (pts[n - 1].y - a.y) * t }
+  }
+  const p0 = spineMid(pts[i - 1], pts[i])
+  const p1 = spineMid(pts[i], pts[i + 1])
+  const c = pts[i]
+  const it = 1 - t
+  return {
+    x: it * it * p0.x + 2 * it * t * c.x + t * t * p1.x,
+    y: it * it * p0.y + 2 * it * t * c.y + t * t * p1.y,
+  }
+}
+
+/** 主干：逐层穿过一颗神经元的信号线。走中性墨色，只作信号线不抢分类色 */
+/** 主干路径（SVG path 数据）：画布描边与 CSS offset-path 共用同一条曲线，两边不会走样 */
+export function archSpinePath(pts: ArchSpine): string {
+  const n = pts.length
+  if (n < 2) return ''
+  const f = (v: number) => v.toFixed(1)
+  const mid = (a: { x: number; y: number }, b: { x: number; y: number }) => `${f((a.x + b.x) / 2)},${f((a.y + b.y) / 2)}`
+  let d = `M${f(pts[0].x)},${f(pts[0].y)} L${mid(pts[0], pts[1])}`
+  for (let i = 1; i < n - 1; i += 1) d += ` Q${f(pts[i].x)},${f(pts[i].y)} ${mid(pts[i], pts[i + 1])}`
+  return `${d} L${f(pts[n - 1].x)},${f(pts[n - 1].y)}`
+}
+
+export function paintArchSpine(ctx: CanvasRenderingContext2D, pts: ArchSpine, c: RGB, p: StagePalette, alpha = 1, width = 1.3) {
+  const d = archSpinePath(pts)
+  if (!d) return
+  const path = new Path2D(d)
+  ctx.save()
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
+  ctx.lineWidth = width + 4
+  ctx.strokeStyle = rgba(c, 0.05 * alpha)
+  ctx.stroke(path)
+  ctx.lineWidth = width
+  ctx.strokeStyle = rgba(c, 0.3 * alpha)
+  ctx.stroke(path)
+  ctx.restore()
+}
+
+/** 脉冲在主干上的取样点与速度，供 DOM 脉冲元素逐帧定位（只写 transform，不触发重绘） */
+export function archFlowSpots(pts: ArchSpine, t: number, count = 3, speed = 0.15) {
+  const out: Array<{ x: number; y: number; fade: number }> = []
+  if (pts.length < 2) return out
+  for (let k = 0; k < count; k += 1) {
+    const u = (t * speed + k / count) % 1
+    const at = archSpineAt(pts, u)
+    out.push({ x: at.x, y: at.y, fade: Math.min(1, Math.sin(u * Math.PI) * 1.7) })
+  }
+  return out
+}

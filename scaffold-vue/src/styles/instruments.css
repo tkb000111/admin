@@ -725,6 +725,25 @@
 }
 .rg.is-pannable { cursor: grab; touch-action: none; }
 .rg-stage-canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+
+/* 架构图的动态件走 DOM：脉冲每帧只改 transform，交给合成器，不触发重绘 */
+.rg-anim { position: absolute; inset: 0; pointer-events: none; }
+.rg-pulse-dot {
+  position: absolute; left: 0; top: 0; width: 7px; height: 7px; margin: -3.5px 0 0 -3.5px;
+  border-radius: 50%; background: var(--graph-accent, var(--blue));
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--graph-accent, var(--blue)) 16%, transparent);
+  will-change: transform, opacity;
+}
+.rg-halo {
+  position: absolute; translate: -50% -50%; border-radius: 50%;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--cat-ink, var(--graph-accent)) 20%, transparent), transparent 74%);
+  /* 必须提升为合成层：否则 opacity 动画会每帧重绘这张径向渐变 */
+  will-change: opacity;
+  animation: rg-halo-breathe 3.8s ease-in-out infinite;
+}
+.rg-anim.is-halted .rg-halo { animation: none; opacity: .7; }
+@keyframes rg-halo-breathe { 0%, 100% { opacity: .45 } 50% { opacity: 1 } }
+@media (prefers-reduced-motion: reduce) { .rg-halo { animation: none; } }
 .rg-layer { position: absolute; inset: 0; transform-origin: 0 0; }
 .rg-links { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
 .rg-link { color: var(--thread-active); }
@@ -891,6 +910,43 @@
 
 /* dot：Canvas 画圆点，DOM 只留 18px 命中区与悬停标签 */
 .rg.is-stage .rg-node.is-dot .rg-dot { width: 18px; height: 18px; background: none; border: 0; box-shadow: none; }
+
+/* arch：层标签，落在层柱下方。平涂半透明纸色，不用 backdrop-filter——
+   架构图模式下标签静态定位不逐帧移动，但画布在重绘，玻璃模糊仍会跟着重算 */
+.rg.is-stage .rg-node.is-arch .rg-body {
+  flex-direction: column; align-items: center; gap: 1px;
+  min-width: 80px; max-width: 118px; padding: 7px 10px 8px;
+  border-radius: var(--r-sm); text-align: center; white-space: normal;
+  background: color-mix(in srgb, var(--surface-solid) 82%, transparent);
+  border: 1px solid var(--glass-line);
+  box-shadow: var(--edge), var(--e1);
+  backdrop-filter: none;
+}
+.rg.is-stage .rg-node.is-arch .rg-dot { display: none; }
+.rg.is-stage .rg-node.is-arch .rg-rank {
+  font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--cat-ink, var(--ink-faint));
+}
+.rg.is-stage .rg-node.is-arch .rg-label {
+  font-size: 13px; font-weight: 680; letter-spacing: -.01em;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.rg.is-stage .rg-node.is-arch .rg-sub {
+  font-family: var(--font-mono); font-size: 10px; color: var(--ink-faint);
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.rg.is-stage .rg-node.is-arch .rg-count {
+  font-size: 17px; font-weight: 640; line-height: 1.15; margin-top: 2px;
+  color: var(--cat-ink, var(--ink));
+}
+.rg.is-stage .rg-node.is-arch .rg-count::after { content: " 人"; font-size: 10.5px; font-weight: 500; color: var(--ink-faint); }
+.rg.is-stage .rg-node.is-arch.is-dim .rg-body { opacity: .5; }
+.rg.is-stage .rg-node.is-arch:hover .rg-body,
+.rg.is-stage .rg-node.is-arch.is-active .rg-body {
+  border-color: color-mix(in srgb, var(--cat-ink) 55%, transparent);
+  box-shadow: var(--edge), var(--e2), 0 0 0 3px color-mix(in srgb, var(--cat-ink) 12%, transparent);
+}
+.rg.is-stage .rg-node.is-arch.is-active .rg-label { color: var(--cat-ink); }
 
 /* slab：岗位台阶，浅色玻璃台面 + 上沿分类色细带 */
 .rg.is-stage .rg-node.is-slab .rg-body {
@@ -1204,16 +1260,19 @@ button.trace-crumb:hover { color: var(--blue); }
 /* ── 岗位阶梯（图谱舞台） ─────────────────────────────────── */
 .ladder { position: relative; overflow-x: auto; border-radius: var(--r-xl); }
 .ladder-stage { height: max(560px, calc(100dvh - 236px)); }
-.ladder-card { width: 240px; padding: 14px 16px 14px; border-radius: var(--r-lg); display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
-.ladder-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; }
-.ladder-card-rank { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .06em; color: var(--cat-ink); }
-.ladder-card h3 { margin: 0; font-size: 18px; font-weight: 720; letter-spacing: -.02em; }
-.ladder-card dl { margin: 2px 0 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; }
-.ladder-card dl div { padding: 8px 10px; border-radius: var(--r-sm); background: var(--hover-bg); }
-.ladder-card dt { font-size: 11px; color: var(--ink-faint); }
-.ladder-card dd { margin: 2px 0 0; font-family: var(--font-mono); font-size: 18px; font-weight: 600; }
-.ladder-card dd small { margin-left: 3px; font-size: 10.5px; color: var(--ink-faint); }
-.ladder-card-actions { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 2px; }
+.ladder-card {
+  width: auto; max-width: min(760px, calc(100% - 28px));
+  padding: 8px 14px; border-radius: var(--r-md);
+  display: flex; flex-direction: row; align-items: center; gap: 12px; flex-wrap: nowrap;
+}
+.ladder-card-rank { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .06em; color: var(--cat-ink); white-space: nowrap; }
+.ladder-card h3 { margin: 0; font-size: 15px; font-weight: 720; letter-spacing: -.02em; white-space: nowrap; }
+.ladder-card dl { margin: 0; display: flex; gap: 6px; }
+.ladder-card dl div { padding: 3px 9px; border-radius: var(--r-sm); background: var(--hover-bg); display: flex; align-items: baseline; gap: 6px; }
+.ladder-card dt { font-size: 10.5px; color: var(--ink-faint); white-space: nowrap; }
+.ladder-card dd { margin: 0; font-family: var(--font-mono); font-size: 14px; font-weight: 600; }
+.ladder-card dd small { margin-left: 2px; font-size: 10px; color: var(--ink-faint); }
+.ladder-card-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
 .ladder-empty { position: absolute; inset: 0; }
 @media (max-width: 899px) { .ladder-card { display: none; } }
 .org-link.is-active { stroke: color-mix(in srgb, var(--cat-ink, var(--blue)) 85%, transparent); stroke-width: 2; }
