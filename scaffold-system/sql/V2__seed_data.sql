@@ -45,8 +45,9 @@ INSERT IGNORE INTO sys_user_post (user_id, post_id) VALUES (1, 3), (2, 5), (3, 6
 
 INSERT IGNORE INTO sys_menu (id, parent_id, menu_name, menu_type, icon, path, component, permission, sort, visible, status, create_by, update_by)
 VALUES
-    (1, 0, '工作台', 'menu', 'dashboard', '/dashboard', 'dashboard/index', '', 1, 1, 1, 'system', 'system'),
-    (100, 0, '系统管理', 'dir', 'gear', '/system', '', '', 2, 1, 1, 'system', 'system'),
+    (900, 0, '后台管理', 'dir', 'layers', '', '', '', 1, 1, 1, 'system', 'system'),
+    (1, 900, '工作台', 'menu', 'dashboard', '/dashboard', 'dashboard/index', '', 1, 1, 1, 'system', 'system'),
+    (100, 900, '系统管理', 'dir', 'gear', '/system', '', '', 2, 1, 1, 'system', 'system'),
     (101, 100, '用户管理', 'menu', 'users', '/system/user', 'system/user/index', 'system:user:list', 1, 1, 1, 'system', 'system'),
     (1011, 101, '新增用户', 'btn', '', '', '', 'system:user:add', 1, 1, 1, 'system', 'system'),
     (1012, 101, '编辑用户', 'btn', '', '', '', 'system:user:edit', 2, 1, 1, 'system', 'system'),
@@ -76,12 +77,12 @@ VALUES
     (1071, 107, '新增参数', 'btn', '', '', '', 'system:config:add', 1, 1, 1, 'system', 'system'),
     (1072, 107, '编辑参数', 'btn', '', '', '', 'system:config:edit', 2, 1, 1, 'system', 'system'),
     (1073, 107, '删除参数', 'btn', '', '', '', 'system:config:remove', 3, 1, 1, 'system', 'system'),
-    (200, 0, '系统监控', 'dir', 'log', '/monitor', '', '', 3, 1, 1, 'system', 'system'),
+    (200, 900, '系统监控', 'dir', 'log', '/monitor', '', '', 3, 1, 1, 'system', 'system'),
     (201, 200, '操作日志', 'menu', 'file', '/monitor/oper-log', 'monitor/operlog/index', 'monitor:operlog:list', 1, 1, 1, 'system', 'system'),
     (2011, 201, '清理操作日志', 'btn', '', '', '', 'monitor:operlog:remove', 1, 1, 1, 'system', 'system'),
     (202, 200, '登录日志', 'menu', 'lock', '/monitor/login-log', 'monitor/loginlog/index', 'monitor:loginlog:list', 2, 1, 1, 'system', 'system'),
     (2021, 202, '清理登录日志', 'btn', '', '', '', 'monitor:loginlog:remove', 1, 1, 1, 'system', 'system'),
-    (300, 0, '系统工具', 'dir', 'tool', '/tool', '', '', 4, 1, 1, 'system', 'system'),
+    (300, 900, '系统工具', 'dir', 'tool', '/tool', '', '', 4, 1, 1, 'system', 'system'),
     (301, 300, '代码生成', 'menu', 'command', '/tool/generator', 'tool/gen/index', 'tool:gen:list', 1, 1, 1, 'system', 'system');
 
 -- 超级管理员拥有全部菜单；其余角色由管理员在「角色管理」中按需授权
